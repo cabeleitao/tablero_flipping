@@ -36,6 +36,7 @@
   </div>
 
   <div class="section" id="tab-datos">
+    <p class="sub" style="margin:0 0 8px;text-transform:uppercase;letter-spacing:0.04em;font-weight:600">Datos del proyecto</p>
     <form id="f-proyecto">
       <label for="nombre_direccion">Nombre / dirección</label>
       <input type="text" id="nombre_direccion">
@@ -56,6 +57,12 @@
         <option value="vendido">Vendido</option>
       </select>
 
+      <button type="submit" id="btn-proyecto">Guardar datos del proyecto</button>
+      <div id="msg-proyecto"></div>
+    </form>
+
+    <p class="sub" style="margin:32px 0 8px;text-transform:uppercase;letter-spacing:0.04em;font-weight:600">Estimación inicial</p>
+    <form id="f-estimacion">
       <label for="fecha_venta_estimada">Fecha de venta — estimada</label>
       <input type="date" id="fecha_venta_estimada">
 
@@ -63,8 +70,15 @@
       <input type="number" id="precio_venta_estimado" step="0.01" min="0">
       <p class="sub" style="margin:6px 0 0">Este valor es el que se usa para calcular Activos en el panel.</p>
 
-      <button type="submit" id="btn-proyecto">Guardar cambios</button>
-      <div id="msg-proyecto"></div>
+      <label for="presupuesto_compra" style="margin-top:22px">Compra — estimada</label>
+      <input type="number" id="presupuesto_compra" step="0.01" min="0">
+      <label for="presupuesto_remodelacion">Remodelación — estimada</label>
+      <input type="number" id="presupuesto_remodelacion" step="0.01" min="0">
+      <label for="presupuesto_cierre">Cierre — estimado</label>
+      <input type="number" id="presupuesto_cierre" step="0.01" min="0">
+
+      <button type="submit" id="btn-estimacion">Guardar estimación</button>
+      <div id="msg-estimacion"></div>
     </form>
   </div>
 
@@ -288,6 +302,14 @@
         document.getElementById('fecha_venta_estimada').value = p.fecha_venta_estimada ? p.fecha_venta_estimada.split('T')[0] : '';
         document.getElementById('precio_venta_estimado').value = p.precio_venta_estimado || '';
 
+        const presupuestoPorRubro = {};
+        (res.data.presupuesto || []).forEach(function(item) {
+          if (!item.sub_rubro) presupuestoPorRubro[item.rubro] = item.monto_presupuestado;
+        });
+        document.getElementById('presupuesto_compra').value = presupuestoPorRubro.compra || '';
+        document.getElementById('presupuesto_remodelacion').value = presupuestoPorRubro.remodelacion || '';
+        document.getElementById('presupuesto_cierre').value = presupuestoPorRubro.cierre_venta || '';
+
         const c = res.data.cierre;
         if (c) {
           document.getElementById('fecha_venta').value = c.fecha_venta ? c.fecha_venta.split('T')[0] : '';
@@ -430,14 +452,47 @@
         nombre_direccion: document.getElementById('nombre_direccion').value,
         pais: document.getElementById('pais').value,
         fecha_compra: document.getElementById('fecha_compra').value,
-        estado: document.getElementById('estado').value,
-        fecha_venta_estimada: document.getElementById('fecha_venta_estimada').value,
-        precio_venta_estimado: document.getElementById('precio_venta_estimado').value
+        estado: document.getElementById('estado').value
       }
     }).then(function(data) {
       btn.disabled = false;
       if (data.ok) { volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…'); }
       else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+    }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+  });
+
+  // --- Guardar estimación inicial (Proyectos.precio/fecha estimados + Presupuesto) ---
+  document.getElementById('f-estimacion').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-estimacion');
+    const msg = document.getElementById('msg-estimacion');
+    btn.disabled = true;
+
+    const guardarProyecto = postFila({
+      modo: 'actualizar',
+      sheet: 'Proyectos',
+      id_proyecto: idProyecto,
+      fields: {
+        fecha_venta_estimada: document.getElementById('fecha_venta_estimada').value,
+        precio_venta_estimado: document.getElementById('precio_venta_estimado').value
+      }
+    });
+
+    const guardarPresupuesto = postFila({
+      modo: 'actualizar_presupuesto',
+      id_proyecto: idProyecto,
+      valores: {
+        compra: document.getElementById('presupuesto_compra').value || 0,
+        remodelacion: document.getElementById('presupuesto_remodelacion').value || 0,
+        cierre_venta: document.getElementById('presupuesto_cierre').value || 0
+      }
+    });
+
+    Promise.all([guardarProyecto, guardarPresupuesto]).then(function(resultados) {
+      const fallo = resultados.find(function(r) { return !r.ok; });
+      btn.disabled = false;
+      if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; }
+      else { volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…'); }
     }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
   });
 
