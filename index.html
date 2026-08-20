@@ -81,7 +81,7 @@
           '<div class="fila">' +
             '<div><div class="nombre">' + (p.nombre || p.id) + '</div>' +
             '<div class="meta">' + (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ') + '</div></div>' +
-            '<div class="fila"><div class="monto">' + fmt(p.ejecutado) + '</div><span class="arrow">›</span></div>' +
+            '<div class="fila"><div class="monto">' + fmt(p.valor_estimado) + '</div><span class="arrow">›</span></div>' +
           '</div>';
         cont.appendChild(a);
       });
@@ -106,9 +106,9 @@
   document.getElementById('kpi-activos-card').addEventListener('click', function() {
     if (!ultimoDashboard) return;
     const filas = ultimoDashboard.proyectos_activos
-      .filter(function(p) { return p.ejecutado > 0; })
-      .map(function(p) { return { label: p.nombre || p.id, monto: p.ejecutado }; });
-    abrirModalDetalle('Activos por proyecto', filas);
+      .filter(function(p) { return p.valor_estimado > 0; })
+      .map(function(p) { return { label: p.nombre || p.id, monto: p.valor_estimado }; });
+    abrirModalDetalle('Activos por proyecto (valor de venta estimado)', filas);
   });
 
   document.getElementById('kpi-pasivos-card').addEventListener('click', function() {

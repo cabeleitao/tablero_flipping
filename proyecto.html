@@ -47,11 +47,12 @@
       <option value="vendido">Vendido</option>
     </select>
 
-    <label for="fecha_venta_estimada">Fecha de venta estimada</label>
+    <label for="fecha_venta_estimada">Fecha de venta — estimada</label>
     <input type="date" id="fecha_venta_estimada">
 
-    <label for="precio_venta_estimado">Precio de venta estimado</label>
+    <label for="precio_venta_estimado">Precio de venta — estimado</label>
     <input type="number" id="precio_venta_estimado" step="0.01" min="0">
+    <p class="sub" style="margin:6px 0 0">Este valor es el que se usa para calcular Activos en el panel.</p>
 
     <label style="margin-top:22px">Presupuesto inicial</label>
     <label for="presupuesto_compra" style="margin-top:8px">Compra estimada</label>
@@ -117,17 +118,18 @@
     <label for="proyecto_cierre">Proyecto</label>
     <select id="proyecto_cierre"><option value="">Cargando proyectos…</option></select>
 
-    <label for="fecha_venta">Fecha de venta</label>
+    <label for="fecha_venta">Fecha de venta — real</label>
     <input type="date" id="fecha_venta">
 
-    <label for="precio_venta">Precio de venta</label>
+    <label for="precio_venta">Precio de venta — real</label>
     <input type="number" id="precio_venta" step="0.01" min="0">
 
-    <label for="gastos_cierre_venta">Gastos de cierre de venta</label>
+    <label for="gastos_cierre_venta">Gastos de cierre de venta — real</label>
     <input type="number" id="gastos_cierre_venta" step="0.01" min="0">
 
     <label for="fecha_cancelacion_prestamo">Fecha de cancelación del préstamo</label>
     <input type="date" id="fecha_cancelacion_prestamo">
+    <p class="sub" style="margin:6px 0 0">Completá esta pestaña recién cuando el proyecto se vende de verdad.</p>
   </div>
 
   <button type="submit" id="btn">Guardar</button>
@@ -257,6 +259,12 @@
     }).then(function(r) { return r.json(); });
   }
 
+  function volverAlPanel(msgEl, texto) {
+    msgEl.textContent = texto;
+    msgEl.className = 'ok';
+    setTimeout(function() { window.location.href = 'index.html'; }, 700);
+  }
+
   document.getElementById('f').addEventListener('submit', function(e) {
     e.preventDefault();
     const btn = document.getElementById('btn');
@@ -283,7 +291,7 @@
       ];
       postJson({ modo: 'nuevo_proyecto', proyecto: proyecto, presupuesto: presupuesto }).then(function(data) {
         btn.disabled = false;
-        if (data.ok) { msg.textContent = 'Proyecto creado.'; msg.className = 'ok'; document.getElementById('f').reset(); }
+        if (data.ok) { volverAlPanel(msg, 'Proyecto creado. Volviendo al panel…'); }
         else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
       }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
 
@@ -335,9 +343,7 @@
           if (fallo) { btn.disabled = false; msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
           return registrarGastoSiCompra(montoTotal, fecha).then(function() {
             btn.disabled = false;
-            msg.textContent = 'Guardado (' + socios.length + ' socios).';
-            msg.className = 'ok';
-            document.getElementById('monto_propio_total').value = '';
+            volverAlPanel(msg, 'Guardado (' + socios.length + ' socios). Volviendo al panel…');
           });
         }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
 
@@ -360,9 +366,7 @@
           if (!data.ok) { btn.disabled = false; msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }
           return registrarGastoSiCompra(parseFloat(monto) || 0, fecha).then(function() {
             btn.disabled = false;
-            msg.textContent = 'Guardado.';
-            msg.className = 'ok';
-            document.getElementById('f').reset();
+            volverAlPanel(msg, 'Guardado. Volviendo al panel…');
           });
         }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
       }
@@ -378,7 +382,7 @@
       };
       postFila('Cierre_venta', fields).then(function(data) {
         btn.disabled = false;
-        if (data.ok) { msg.textContent = 'Guardado.'; msg.className = 'ok'; document.getElementById('f').reset(); }
+        if (data.ok) { volverAlPanel(msg, 'Guardado. Volviendo al panel…'); }
         else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
       }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     }
