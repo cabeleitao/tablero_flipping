@@ -18,9 +18,9 @@
 
 <div class="wrap">
   <div class="kpi-grid">
-    <div class="kpi" id="kpi-ganancia-card"><p class="label">Ganancia del año</p><p class="value" id="kpi-ganancia">—</p></div>
-    <div class="kpi"><p class="label">Activos</p><p class="value" id="kpi-activos">—</p></div>
-    <div class="kpi"><p class="label">Pasivos</p><p class="value" id="kpi-pasivos">—</p></div>
+    <div class="kpi pastel-green" id="kpi-ganancia-card"><p class="label">Ganancia del año</p><p class="value" id="kpi-ganancia">—</p></div>
+    <div class="kpi pastel-blue"><p class="label">Activos</p><p class="value" id="kpi-activos">—</p></div>
+    <div class="kpi pastel-amber"><p class="label">Pasivos</p><p class="value" id="kpi-pasivos">—</p></div>
   </div>
 
   <div class="card">
@@ -51,8 +51,7 @@
 
       const kg = document.getElementById('kpi-ganancia');
       kg.textContent = fmt(d.ganancia_anio);
-      kg.className = 'value ' + (d.ganancia_anio >= 0 ? 'pos' : 'neg');
-      document.getElementById('kpi-ganancia-card').className = 'kpi ' + (d.ganancia_anio >= 0 ? 'pos' : 'neg');
+      document.getElementById('kpi-ganancia-card').className = 'kpi ' + (d.ganancia_anio >= 0 ? 'pastel-green' : 'pastel-red');
 
       document.getElementById('kpi-activos').textContent = fmt(d.activos);
       document.getElementById('kpi-pasivos').textContent = fmt(d.pasivos);
