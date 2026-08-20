@@ -79,6 +79,7 @@
       <option value="compra">Compra</option>
       <option value="remodelacion">Remodelación</option>
     </select>
+    <p class="sub" style="margin:6px 0 0">Recordá que, sumando todas las fuentes de un proyecto, el total financiado tiene que cubrir compra + remodelación presupuestada.</p>
 
     <div id="fecha-monto-propio">
       <label for="monto_propio_total">Monto total aportado</label>
@@ -334,7 +335,8 @@
             fecha_desembolso: fecha,
             penalidad_prepago: '',
             retorno_pactado: '',
-            destino: destino
+            destino: destino,
+            fin_id: 'f-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
           });
         });
 
@@ -360,7 +362,8 @@
           fecha_desembolso: fecha,
           penalidad_prepago: document.getElementById('penalidad_prepago').value,
           retorno_pactado: document.getElementById('retorno_pactado').value,
-          destino: destino
+          destino: destino,
+          fin_id: 'f-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
         };
         postFila('Financiamiento', fields).then(function(data) {
           if (!data.ok) { btn.disabled = false; msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }

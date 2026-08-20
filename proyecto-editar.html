@@ -61,7 +61,40 @@
 
   <div class="section" id="tab-financiamiento">
     <div id="hist-financiamiento"><p class="sub" style="margin:0">Sin fuentes cargadas todavía.</p></div>
+    <p class="sub" id="resumen-financiamiento" style="margin:10px 0 0"></p>
     <button type="button" class="btn secondary" id="btn-mostrar-refi" style="margin-top:14px">+ Agregar / refinanciar</button>
+
+    <form id="f-editar-financiamiento" style="display:none;margin-top:18px">
+      <p class="sub" style="margin:0 0 6px">Editando fuente existente</p>
+      <label for="ed_tipo_fuente">Tipo de fuente</label>
+      <select id="ed_tipo_fuente">
+        <option value="propio">Capital propio</option>
+        <option value="prestamo">Préstamo de terceros</option>
+        <option value="inversor">Inversor</option>
+      </select>
+      <label for="ed_destino">Destino</label>
+      <select id="ed_destino">
+        <option value="compra">Compra</option>
+        <option value="remodelacion">Remodelación</option>
+      </select>
+      <label for="ed_nombre">Nombre (socio, prestamista o inversor)</label>
+      <input type="text" id="ed_nombre">
+      <label for="ed_monto">Monto</label>
+      <input type="number" id="ed_monto" step="0.01" min="0">
+      <label for="ed_tasa_anual">Tasa anual (%)</label>
+      <input type="number" id="ed_tasa_anual" step="0.01" min="0">
+      <label for="ed_fecha_desembolso">Fecha de desembolso</label>
+      <input type="date" id="ed_fecha_desembolso">
+      <label for="ed_penalidad_prepago">Penalidad por cancelación anticipada</label>
+      <input type="text" id="ed_penalidad_prepago">
+      <label for="ed_retorno_pactado">Retorno pactado</label>
+      <input type="text" id="ed_retorno_pactado">
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <button type="submit" style="margin-top:0">Guardar cambios</button>
+        <button type="button" class="btn secondary" id="btn-cancelar-edicion" style="margin-top:0">Cancelar</button>
+      </div>
+      <div id="msg-editar-financiamiento"></div>
+    </form>
 
     <form id="f-financiamiento" style="display:none;margin-top:18px">
       <label for="tipo_fuente">Tipo de fuente</label>
@@ -171,6 +204,55 @@
     setTimeout(function() { window.location.href = 'index.html'; }, 700);
   }
 
+  let financiamientoActual = [];
+
+  function abrirEdicionFinanciamiento(finId) {
+    const f = financiamientoActual.find(function(x) { return x.fin_id === finId; });
+    if (!f) return;
+    document.getElementById('f-financiamiento').style.display = 'none';
+    document.getElementById('btn-mostrar-refi').style.display = 'inline-flex';
+    document.getElementById('f-editar-financiamiento').dataset.finid = finId;
+    document.getElementById('ed_tipo_fuente').value = f.tipo_fuente || 'propio';
+    document.getElementById('ed_destino').value = f.destino || 'compra';
+    document.getElementById('ed_nombre').value = f.nombre_prestamista_inversor || '';
+    document.getElementById('ed_monto').value = f.monto || '';
+    document.getElementById('ed_tasa_anual').value = f.tasa_anual || '';
+    document.getElementById('ed_fecha_desembolso').value = f.fecha_desembolso ? String(f.fecha_desembolso).split('T')[0] : '';
+    document.getElementById('ed_penalidad_prepago').value = f.penalidad_prepago || '';
+    document.getElementById('ed_retorno_pactado').value = f.retorno_pactado || '';
+    document.getElementById('f-editar-financiamiento').style.display = 'block';
+    document.getElementById('f-editar-financiamiento').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  document.getElementById('btn-cancelar-edicion').addEventListener('click', function() {
+    document.getElementById('f-editar-financiamiento').style.display = 'none';
+  });
+
+  document.getElementById('f-editar-financiamiento').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const finId = this.dataset.finid;
+    const msg = document.getElementById('msg-editar-financiamiento');
+    postFila({
+      modo: 'actualizar_por_campo',
+      sheet: 'Financiamiento',
+      campo: 'fin_id',
+      valor: finId,
+      fields: {
+        tipo_fuente: document.getElementById('ed_tipo_fuente').value,
+        destino: document.getElementById('ed_destino').value,
+        nombre_prestamista_inversor: document.getElementById('ed_nombre').value,
+        monto: document.getElementById('ed_monto').value,
+        tasa_anual: document.getElementById('ed_tasa_anual').value,
+        fecha_desembolso: document.getElementById('ed_fecha_desembolso').value,
+        penalidad_prepago: document.getElementById('ed_penalidad_prepago').value,
+        retorno_pactado: document.getElementById('ed_retorno_pactado').value
+      }
+    }).then(function(data) {
+      if (data.ok) { volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…'); }
+      else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+    }).catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+  });
+
   function postFila(payload) {
     return fetch(APPS_SCRIPT_URL, {
       method: 'POST',
@@ -207,6 +289,7 @@
 
         const histCont = document.getElementById('hist-financiamiento');
         const fin = res.data.financiamiento || [];
+        financiamientoActual = fin;
         if (!fin.length) {
           histCont.innerHTML = '<p class="sub" style="margin:0">Sin fuentes cargadas todavía.</p>';
         } else {
@@ -215,10 +298,28 @@
             const row = document.createElement('div');
             row.className = 'hist-row';
             row.innerHTML =
-              '<span><span class="tag">' + f.tipo_fuente + '</span>' + (f.nombre_prestamista_inversor || '') + '</span>' +
-              '<span>' + fmt(f.monto) + (f.tasa_anual ? ' · ' + f.tasa_anual + '%' : '') + '</span>';
+              '<span><span class="tag">' + f.tipo_fuente + '</span>' + (f.nombre_prestamista_inversor || '') + (f.destino ? ' · ' + f.destino : '') + '</span>' +
+              '<span style="display:flex;align-items:center;gap:10px">' + fmt(f.monto) + (f.tasa_anual ? ' · ' + f.tasa_anual + '%' : '') +
+              (f.fin_id ? ' <button type="button" class="btn ghost editar-fin" data-finid="' + f.fin_id + '" style="padding:2px 4px"><i class="ti ti-edit" style="font-size:15px" aria-hidden="true"></i></button>' : '') +
+              '</span>';
             histCont.appendChild(row);
           });
+          histCont.querySelectorAll('.editar-fin').forEach(function(btn) {
+            btn.addEventListener('click', function() { abrirEdicionFinanciamiento(btn.dataset.finid); });
+          });
+        }
+
+        const presupuesto = res.data.presupuesto || [];
+        const necesario = presupuesto
+          .filter(function(p) { return p.rubro === 'compra' || p.rubro === 'remodelacion'; })
+          .reduce(function(a, p) { return a + (parseFloat(p.monto_presupuestado) || 0); }, 0);
+        const financiado = fin.reduce(function(a, f) { return a + (parseFloat(f.monto) || 0); }, 0);
+        const resumen = document.getElementById('resumen-financiamiento');
+        if (necesario > 0) {
+          resumen.textContent = 'Financiado: ' + fmt(financiado) + ' de ' + fmt(necesario) + ' necesario (compra + remodelación presupuestada)';
+          resumen.style.color = financiado < necesario ? 'var(--danger)' : 'var(--text-secondary)';
+        } else {
+          resumen.textContent = '';
         }
 
         document.getElementById('contenido').style.display = 'block';
@@ -350,7 +451,8 @@
         return postFila({ sheet: 'Financiamiento', fields: {
           id_proyecto: idProyecto, tipo_fuente: 'propio', nombre_prestamista_inversor: s.nombre,
           monto: (montoTotal * (parseFloat(s.pct) || 0) / 100).toFixed(2),
-          tasa_anual: '', fecha_desembolso: fecha, penalidad_prepago: '', retorno_pactado: '', destino: destino
+          tasa_anual: '', fecha_desembolso: fecha, penalidad_prepago: '', retorno_pactado: '', destino: destino,
+          fin_id: 'f-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
         }});
       })).then(function(resultados) {
         const fallo = resultados.find(function(r) { return !r.ok; });
@@ -372,7 +474,8 @@
         fecha_desembolso: fecha,
         penalidad_prepago: document.getElementById('penalidad_prepago').value,
         retorno_pactado: document.getElementById('retorno_pactado').value,
-        destino: destino
+        destino: destino,
+        fin_id: 'f-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
       }}).then(function(data) {
         if (!data.ok) { btn.disabled = false; msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }
         return registrarGastoSiCompra(parseFloat(monto) || 0, fecha).then(function() {
