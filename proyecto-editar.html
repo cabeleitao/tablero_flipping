@@ -331,7 +331,7 @@
             row.innerHTML =
               '<span><span class="tag">' + f.tipo_fuente + '</span>' + (f.nombre_prestamista_inversor || '') + (f.destino ? ' · ' + f.destino : '') + '</span>' +
               '<span style="display:flex;align-items:center;gap:10px">' + fmt(f.monto) + (f.tasa_anual ? ' · ' + f.tasa_anual + '%' : '') +
-              (f.fin_id ? ' <button type="button" class="btn ghost editar-fin" data-finid="' + f.fin_id + '" style="padding:2px 4px"><i class="ti ti-edit" style="font-size:15px" aria-hidden="true"></i></button>' : '') +
+              (f.fin_id ? ' <button type="button" class="btn ghost editar-fin" data-finid="' + f.fin_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' : '') +
               '</span>';
             histCont.appendChild(row);
           });
