@@ -8,24 +8,28 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="wrap">
-  <h1>Flipping — panel</h1>
-  <p class="sub">Proyectos activos y situación general</p>
 
+<div class="hero">
+  <div class="hero-inner">
+    <h1>Flipping — panel</h1>
+    <p class="sub">Proyectos activos y situación general</p>
+  </div>
+</div>
+
+<div class="wrap">
   <div class="kpi-grid">
-    <div class="kpi"><p class="label">Ganancia del año</p><p class="value" id="kpi-ganancia">—</p></div>
+    <div class="kpi" id="kpi-ganancia-card"><p class="label">Ganancia del año</p><p class="value" id="kpi-ganancia">—</p></div>
     <div class="kpi"><p class="label">Activos</p><p class="value" id="kpi-activos">—</p></div>
     <div class="kpi"><p class="label">Pasivos</p><p class="value" id="kpi-pasivos">—</p></div>
   </div>
 
   <div class="card">
-    <p class="sub" style="margin-bottom:6px">Proyectos activos</p>
-    <div id="lista-proyectos"><p class="sub" style="margin:8px 0 0">Cargando…</p></div>
+    <h2>Proyectos activos</h2>
+    <div id="lista-proyectos"><p class="sub" style="margin:0">Cargando…</p></div>
   </div>
 
   <div class="actions">
-    <a class="btn" href="proyecto.html">Cargar proyecto</a>
-    <a class="btn secondary" href="ejecucion.html">Cargar gasto</a>
+    <a class="btn" href="proyecto.html">+ Nuevo proyecto</a>
   </div>
 </div>
 
@@ -40,7 +44,7 @@
     .then(function(r) { return r.json(); })
     .then(function(res) {
       if (!res.ok) {
-        document.getElementById('lista-proyectos').innerHTML = '<p class="sub" style="margin:8px 0 0">Error: ' + res.error + '</p>';
+        document.getElementById('lista-proyectos').innerHTML = '<p class="sub" style="margin:0">Error: ' + res.error + '</p>';
         return;
       }
       const d = res.data;
@@ -48,28 +52,32 @@
       const kg = document.getElementById('kpi-ganancia');
       kg.textContent = fmt(d.ganancia_anio);
       kg.className = 'value ' + (d.ganancia_anio >= 0 ? 'pos' : 'neg');
+      document.getElementById('kpi-ganancia-card').className = 'kpi ' + (d.ganancia_anio >= 0 ? 'pos' : 'neg');
 
       document.getElementById('kpi-activos').textContent = fmt(d.activos);
       document.getElementById('kpi-pasivos').textContent = fmt(d.pasivos);
 
       const cont = document.getElementById('lista-proyectos');
       if (!d.proyectos_activos.length) {
-        cont.innerHTML = '<p class="sub" style="margin:8px 0 0">No hay proyectos activos todavía.</p>';
+        cont.innerHTML = '<p class="sub" style="margin:0">No hay proyectos activos todavía.</p>';
         return;
       }
       cont.innerHTML = '';
       d.proyectos_activos.forEach(function(p) {
-        const row = document.createElement('div');
-        row.className = 'proyecto-row';
-        row.innerHTML =
-          '<div><div class="nombre">' + (p.nombre || p.id) + '</div>' +
-          '<div class="meta">' + (p.pais || '') + ' · ' + (p.estado || '') + '</div></div>' +
-          '<div class="monto">' + fmt(p.ejecutado) + '</div>';
-        cont.appendChild(row);
+        const a = document.createElement('a');
+        a.className = 'proyecto-card';
+        a.href = 'proyecto-editar.html?id=' + encodeURIComponent(p.id);
+        a.innerHTML =
+          '<div class="fila">' +
+            '<div><div class="nombre">' + (p.nombre || p.id) + '</div>' +
+            '<div class="meta">' + (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ') + '</div></div>' +
+            '<div class="fila"><div class="monto">' + fmt(p.ejecutado) + '</div><span class="arrow">›</span></div>' +
+          '</div>';
+        cont.appendChild(a);
       });
     })
     .catch(function() {
-      document.getElementById('lista-proyectos').innerHTML = '<p class="sub" style="margin:8px 0 0">No se pudo conectar.</p>';
+      document.getElementById('lista-proyectos').innerHTML = '<p class="sub" style="margin:0">No se pudo conectar.</p>';
     });
 </script>
 </body>

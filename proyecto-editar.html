@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editar proyecto — Flipping</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-inner">
+    <a class="back" href="index.html">← Panel</a>
+    <h1 id="titulo" style="margin-top:8px">Cargando proyecto…</h1>
+    <p class="sub" id="subtitulo"></p>
+  </div>
+</div>
+
+<div class="wrap" id="contenido" style="display:none">
+
+  <div class="card">
+    <h2>Datos del proyecto</h2>
+    <form id="f-proyecto">
+      <label for="nombre_direccion">Nombre / dirección</label>
+      <input type="text" id="nombre_direccion">
+
+      <label for="pais">País</label>
+      <select id="pais">
+        <option value="ARG">Argentina</option>
+        <option value="USA">USA</option>
+      </select>
+
+      <label for="fecha_compra">Fecha de compra</label>
+      <input type="date" id="fecha_compra">
+
+      <label for="estado">Estado</label>
+      <select id="estado">
+        <option value="analisis">Análisis</option>
+        <option value="en_curso">En curso</option>
+        <option value="vendido">Vendido</option>
+      </select>
+
+      <label for="fecha_venta_estimada">Fecha de venta estimada</label>
+      <input type="date" id="fecha_venta_estimada">
+
+      <button type="submit" id="btn-proyecto">Guardar cambios</button>
+      <div id="msg-proyecto"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Financiamiento</h2>
+    <div id="hist-financiamiento"><p class="sub" style="margin:0">Sin fuentes cargadas todavía.</p></div>
+    <button type="button" class="btn secondary" id="btn-mostrar-refi" style="margin-top:14px">+ Agregar / refinanciar</button>
+
+    <form id="f-financiamiento" style="display:none;margin-top:18px">
+      <label for="tipo_fuente">Tipo de fuente</label>
+      <select id="tipo_fuente">
+        <option value="propio">Capital propio</option>
+        <option value="prestamo">Préstamo de terceros</option>
+        <option value="inversor">Inversor</option>
+      </select>
+
+      <div id="fecha-monto-propio">
+        <label for="monto_propio_total">Monto total aportado</label>
+        <input type="number" id="monto_propio_total" step="0.01" min="0">
+        <label for="fecha_desembolso_propio">Fecha</label>
+        <input type="date" id="fecha_desembolso_propio">
+        <label style="margin-top:22px">Reparto entre socios</label>
+        <div id="socios-lista"></div>
+        <button type="button" class="add-socio" id="btn-add-socio">+ Agregar socio</button>
+        <p class="pct-total" id="pct-total">Total: 100%</p>
+      </div>
+
+      <div id="campos-terceros" style="display:none">
+        <label for="nombre_prestamista_inversor">Nombre del prestamista o inversor</label>
+        <input type="text" id="nombre_prestamista_inversor">
+        <label for="monto_fin">Monto</label>
+        <input type="number" id="monto_fin" step="0.01" min="0">
+        <label for="tasa_anual">Tasa anual (%)</label>
+        <input type="number" id="tasa_anual" step="0.01" min="0">
+        <label for="fecha_desembolso">Fecha de desembolso</label>
+        <input type="date" id="fecha_desembolso">
+        <label for="penalidad_prepago">Penalidad por cancelación anticipada</label>
+        <input type="text" id="penalidad_prepago" placeholder="ej: 1 año, 2% del saldo">
+        <label for="retorno_pactado">Retorno pactado (solo inversores)</label>
+        <input type="text" id="retorno_pactado" placeholder="ej: 14% anual">
+      </div>
+
+      <button type="submit" id="btn-financiamiento">Guardar fuente</button>
+      <div id="msg-financiamiento"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Cierre y venta</h2>
+    <form id="f-cierre">
+      <label for="fecha_venta">Fecha de venta</label>
+      <input type="date" id="fecha_venta">
+      <label for="precio_venta">Precio de venta</label>
+      <input type="number" id="precio_venta" step="0.01" min="0">
+      <label for="gastos_cierre_venta">Gastos de cierre de venta</label>
+      <input type="number" id="gastos_cierre_venta" step="0.01" min="0">
+      <label for="fecha_cancelacion_prestamo">Fecha de cancelación del préstamo</label>
+      <input type="date" id="fecha_cancelacion_prestamo">
+      <button type="submit" id="btn-cierre">Guardar cierre</button>
+      <div id="msg-cierre"></div>
+    </form>
+  </div>
+
+  <div class="actions">
+    <a class="btn secondary" id="link-gasto" href="#">Cargar gasto de este proyecto</a>
+    <button type="button" class="btn danger" id="btn-eliminar">Eliminar proyecto</button>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="modal-eliminar">
+  <div class="modal">
+    <div class="warn-icon">!</div>
+    <h3>Ojo: estás eliminando un proyecto completo</h3>
+    <p>Se va a borrar el proyecto y <strong>todos</strong> sus datos asociados — presupuesto, gastos ejecutados, financiamiento y cierre/venta. No se puede deshacer.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn secondary" id="btn-cancelar-eliminar">Cancelar</button>
+      <button type="button" class="btn danger" id="btn-confirmar-eliminar">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
+  const params = new URLSearchParams(window.location.search);
+  const idProyecto = params.get('id');
+
+  if (!idProyecto) {
+    document.getElementById('titulo').textContent = 'Falta el id del proyecto';
+  } else {
+    document.getElementById('link-gasto').href = 'ejecucion.html?id=' + encodeURIComponent(idProyecto);
+    cargarDetalle();
+  }
+
+  function postFila(payload) {
+    return fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); });
+  }
+
+  function cargarDetalle() {
+    fetch(APPS_SCRIPT_URL + '?accion=detalle&id=' + encodeURIComponent(idProyecto))
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (!res.ok || !res.data.proyecto) {
+          document.getElementById('titulo').textContent = 'No se encontró el proyecto';
+          return;
+        }
+        const p = res.data.proyecto;
+        document.getElementById('titulo').textContent = p.nombre_direccion || idProyecto;
+        document.getElementById('subtitulo').textContent = (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ');
+        document.getElementById('nombre_direccion').value = p.nombre_direccion || '';
+        document.getElementById('pais').value = p.pais || 'ARG';
+        document.getElementById('fecha_compra').value = p.fecha_compra ? p.fecha_compra.split('T')[0] : '';
+        document.getElementById('estado').value = p.estado || 'en_curso';
+        document.getElementById('fecha_venta_estimada').value = p.fecha_venta_estimada ? p.fecha_venta_estimada.split('T')[0] : '';
+
+        const c = res.data.cierre;
+        if (c) {
+          document.getElementById('fecha_venta').value = c.fecha_venta ? c.fecha_venta.split('T')[0] : '';
+          document.getElementById('precio_venta').value = c.precio_venta || '';
+          document.getElementById('gastos_cierre_venta').value = c.gastos_cierre_venta || '';
+          document.getElementById('fecha_cancelacion_prestamo').value = c.fecha_cancelacion_prestamo ? c.fecha_cancelacion_prestamo.split('T')[0] : '';
+        }
+
+        const histCont = document.getElementById('hist-financiamiento');
+        const fin = res.data.financiamiento || [];
+        if (!fin.length) {
+          histCont.innerHTML = '<p class="sub" style="margin:0">Sin fuentes cargadas todavía.</p>';
+        } else {
+          histCont.innerHTML = '';
+          fin.forEach(function(f) {
+            const row = document.createElement('div');
+            row.className = 'hist-row';
+            row.innerHTML =
+              '<span><span class="tag">' + f.tipo_fuente + '</span>' + (f.nombre_prestamista_inversor || '') + '</span>' +
+              '<span>' + fmt(f.monto) + (f.tasa_anual ? ' · ' + f.tasa_anual + '%' : '') + '</span>';
+            histCont.appendChild(row);
+          });
+        }
+
+        document.getElementById('contenido').style.display = 'block';
+      })
+      .catch(function() {
+        document.getElementById('titulo').textContent = 'No se pudo conectar';
+      });
+  }
+
+  function fmt(n) { return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 }); }
+
+  // --- Guardar datos del proyecto ---
+  document.getElementById('f-proyecto').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-proyecto');
+    const msg = document.getElementById('msg-proyecto');
+    btn.disabled = true;
+    postFila({
+      modo: 'actualizar',
+      sheet: 'Proyectos',
+      id_proyecto: idProyecto,
+      fields: {
+        nombre_direccion: document.getElementById('nombre_direccion').value,
+        pais: document.getElementById('pais').value,
+        fecha_compra: document.getElementById('fecha_compra').value,
+        estado: document.getElementById('estado').value,
+        fecha_venta_estimada: document.getElementById('fecha_venta_estimada').value
+      }
+    }).then(function(data) {
+      btn.disabled = false;
+      msg.textContent = data.ok ? 'Guardado.' : 'Error: ' + data.error;
+      msg.className = data.ok ? 'ok' : 'err';
+    }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+  });
+
+  // --- Cierre y venta ---
+  document.getElementById('f-cierre').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-cierre');
+    const msg = document.getElementById('msg-cierre');
+    btn.disabled = true;
+    postFila({
+      modo: 'actualizar',
+      sheet: 'Cierre_venta',
+      id_proyecto: idProyecto,
+      fields: {
+        fecha_venta: document.getElementById('fecha_venta').value,
+        precio_venta: document.getElementById('precio_venta').value,
+        gastos_cierre_venta: document.getElementById('gastos_cierre_venta').value,
+        fecha_cancelacion_prestamo: document.getElementById('fecha_cancelacion_prestamo').value
+      }
+    }).then(function(data) {
+      btn.disabled = false;
+      msg.textContent = data.ok ? 'Guardado.' : 'Error: ' + data.error;
+      msg.className = data.ok ? 'ok' : 'err';
+    }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+  });
+
+  // --- Financiamiento / refinanciamiento ---
+  document.getElementById('btn-mostrar-refi').addEventListener('click', function() {
+    document.getElementById('f-financiamiento').style.display = 'block';
+    this.style.display = 'none';
+  });
+
+  let socios = [{ nombre: 'Fede', pct: 50 }, { nombre: 'Cabe', pct: 50 }];
+
+  function renderSocios() {
+    const cont = document.getElementById('socios-lista');
+    cont.innerHTML = '';
+    socios.forEach(function(s, i) {
+      const row = document.createElement('div');
+      row.className = 'socio-row';
+      row.innerHTML =
+        '<input type="text" value="' + s.nombre + '" data-i="' + i + '" data-f="nombre" placeholder="Nombre">' +
+        '<input type="number" value="' + s.pct + '" data-i="' + i + '" data-f="pct" min="0" max="100" step="0.1">' +
+        '<span style="font-size:13px;color:var(--text-secondary)">%</span>' +
+        (socios.length > 1 ? '<button type="button" class="rm" data-i="' + i + '">×</button>' : '');
+      cont.appendChild(row);
+    });
+    cont.querySelectorAll('input').forEach(function(inp) {
+      inp.addEventListener('input', function() {
+        const i = parseInt(inp.dataset.i), f = inp.dataset.f;
+        socios[i][f] = f === 'pct' ? parseFloat(inp.value) || 0 : inp.value;
+        updatePctTotal();
+      });
+    });
+    cont.querySelectorAll('.rm').forEach(function(btn) {
+      btn.addEventListener('click', function() { socios.splice(parseInt(btn.dataset.i), 1); renderSocios(); });
+    });
+    updatePctTotal();
+  }
+  function updatePctTotal() {
+    const total = socios.reduce(function(a, s) { return a + (parseFloat(s.pct) || 0); }, 0);
+    const el = document.getElementById('pct-total');
+    el.textContent = 'Total: ' + total.toFixed(1) + '%';
+    el.className = 'pct-total' + (Math.abs(total - 100) > 0.5 ? ' err' : '');
+  }
+  document.getElementById('btn-add-socio').addEventListener('click', function() { socios.push({ nombre: '', pct: 0 }); renderSocios(); });
+  renderSocios();
+
+  document.getElementById('tipo_fuente').addEventListener('change', function() {
+    const esPropio = this.value === 'propio';
+    document.getElementById('fecha-monto-propio').style.display = esPropio ? 'block' : 'none';
+    document.getElementById('campos-terceros').style.display = esPropio ? 'none' : 'block';
+  });
+
+  document.getElementById('f-financiamiento').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn-financiamiento');
+    const msg = document.getElementById('msg-financiamiento');
+    const tipo = document.getElementById('tipo_fuente').value;
+    msg.textContent = '';
+
+    if (tipo === 'propio') {
+      const total = socios.reduce(function(a, s) { return a + (parseFloat(s.pct) || 0); }, 0);
+      if (Math.abs(total - 100) > 0.5) { msg.textContent = 'El reparto entre socios tiene que sumar 100%.'; msg.className = 'err'; return; }
+      const montoTotal = parseFloat(document.getElementById('monto_propio_total').value) || 0;
+      const fecha = document.getElementById('fecha_desembolso_propio').value;
+      btn.disabled = true;
+      Promise.all(socios.map(function(s) {
+        return postFila({ sheet: 'Financiamiento', fields: {
+          id_proyecto: idProyecto, tipo_fuente: 'propio', nombre_prestamista_inversor: s.nombre,
+          monto: (montoTotal * (parseFloat(s.pct) || 0) / 100).toFixed(2),
+          tasa_anual: '', fecha_desembolso: fecha, penalidad_prepago: '', retorno_pactado: ''
+        }});
+      })).then(function(resultados) {
+        btn.disabled = false;
+        const fallo = resultados.find(function(r) { return !r.ok; });
+        if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; }
+        else { msg.textContent = 'Guardado.'; msg.className = 'ok'; cargarDetalle(); }
+      }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+    } else {
+      btn.disabled = true;
+      postFila({ sheet: 'Financiamiento', fields: {
+        id_proyecto: idProyecto, tipo_fuente: tipo,
+        nombre_prestamista_inversor: document.getElementById('nombre_prestamista_inversor').value,
+        monto: document.getElementById('monto_fin').value,
+        tasa_anual: document.getElementById('tasa_anual').value,
+        fecha_desembolso: document.getElementById('fecha_desembolso').value,
+        penalidad_prepago: document.getElementById('penalidad_prepago').value,
+        retorno_pactado: document.getElementById('retorno_pactado').value
+      }}).then(function(data) {
+        btn.disabled = false;
+        if (data.ok) { msg.textContent = 'Guardado.'; msg.className = 'ok'; cargarDetalle(); }
+        else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+      }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+    }
+  });
+
+  // --- Eliminar proyecto ---
+  document.getElementById('btn-eliminar').addEventListener('click', function() {
+    document.getElementById('modal-eliminar').classList.add('show');
+  });
+  document.getElementById('btn-cancelar-eliminar').addEventListener('click', function() {
+    document.getElementById('modal-eliminar').classList.remove('show');
+  });
+  document.getElementById('btn-confirmar-eliminar').addEventListener('click', function() {
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Eliminando…';
+    postFila({ modo: 'eliminar_proyecto', id_proyecto: idProyecto }).then(function(data) {
+      if (data.ok) { window.location.href = 'index.html'; }
+      else { alert('Error al eliminar: ' + data.error); btn.disabled = false; btn.textContent = 'Sí, eliminar'; }
+    }).catch(function() { alert('No se pudo conectar.'); btn.disabled = false; btn.textContent = 'Sí, eliminar'; });
+  });
+</script>
+</body>
+</html>

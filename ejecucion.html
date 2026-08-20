@@ -8,10 +8,16 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="wrap">
-<h1>Cargar gasto</h1>
-<p class="sub"><a href="index.html" style="color:inherit">← Volver al panel</a></p>
 
+<div class="hero">
+  <div class="hero-inner">
+    <a class="back" href="index.html">← Panel</a>
+    <h1 style="margin-top:8px">Cargar gasto</h1>
+    <p class="sub" style="color:rgba(255,255,255,0.65)">Ejecución de obra</p>
+  </div>
+</div>
+
+<div class="wrap">
 <div class="card">
 <form id="f">
   <label for="proyecto">Proyecto</label>
@@ -49,6 +55,7 @@
 
 <script>
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
+  const idPreseleccionado = new URLSearchParams(window.location.search).get('id');
 
   document.getElementById('fecha').valueAsDate = new Date();
 
@@ -65,6 +72,7 @@
         const opt = document.createElement('option');
         opt.value = p.id;
         opt.textContent = p.nombre + ' (' + p.estado + ')';
+        if (idPreseleccionado && p.id === idPreseleccionado) opt.selected = true;
         sel.appendChild(opt);
       });
     })
@@ -101,8 +109,10 @@
         if (data.ok) {
           msg.textContent = 'Gasto guardado.';
           msg.className = 'ok';
+          const idActual = document.getElementById('proyecto').value;
           document.getElementById('f').reset();
           document.getElementById('fecha').valueAsDate = new Date();
+          document.getElementById('proyecto').value = idActual;
         } else {
           msg.textContent = 'Error: ' + data.error;
           msg.className = 'err';
