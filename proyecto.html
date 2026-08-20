@@ -8,10 +8,16 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="wrap">
-<h1>Cargar proyecto</h1>
-<p class="sub"><a href="index.html" style="color:inherit">← Volver al panel</a></p>
 
+<div class="hero">
+  <div class="hero-inner">
+    <a class="back" href="index.html">← Panel</a>
+    <h1 style="margin-top:8px">Cargar proyecto</h1>
+    <p class="sub" style="color:rgba(255,255,255,0.65)">Alta, financiamiento y cierre</p>
+  </div>
+</div>
+
+<div class="wrap">
 <div class="card">
 <div class="tabs">
   <div class="tab active" data-target="nuevo">Nuevo proyecto</div>
@@ -43,6 +49,17 @@
 
     <label for="fecha_venta_estimada">Fecha de venta estimada</label>
     <input type="date" id="fecha_venta_estimada">
+
+    <label for="precio_venta_estimado">Precio de venta estimado</label>
+    <input type="number" id="precio_venta_estimado" step="0.01" min="0">
+
+    <label style="margin-top:22px">Presupuesto inicial</label>
+    <label for="presupuesto_compra" style="margin-top:8px">Compra estimada</label>
+    <input type="number" id="presupuesto_compra" step="0.01" min="0">
+    <label for="presupuesto_remodelacion">Remodelación estimada</label>
+    <input type="number" id="presupuesto_remodelacion" step="0.01" min="0">
+    <label for="presupuesto_cierre">Cierre estimado</label>
+    <input type="number" id="presupuesto_cierre" step="0.01" min="0">
   </div>
 
   <div class="section" id="sec-financiamiento">
@@ -54,6 +71,12 @@
       <option value="propio">Capital propio</option>
       <option value="prestamo">Préstamo de terceros</option>
       <option value="inversor">Inversor</option>
+    </select>
+
+    <label for="destino">Destino</label>
+    <select id="destino">
+      <option value="compra">Compra</option>
+      <option value="remodelacion">Remodelación</option>
     </select>
 
     <div id="fecha-monto-propio">
@@ -226,6 +249,14 @@
     }).then(function(r) { return r.json(); });
   }
 
+  function postJson(payload) {
+    return fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); });
+  }
+
   document.getElementById('f').addEventListener('submit', function(e) {
     e.preventDefault();
     const btn = document.getElementById('btn');
@@ -235,23 +266,44 @@
 
     if (activeTab === 'nuevo') {
       btn.disabled = true;
-      const fields = {
-        id_proyecto: generarIdProyecto(document.getElementById('nombre_direccion').value),
+      const idNuevo = generarIdProyecto(document.getElementById('nombre_direccion').value);
+      const proyecto = {
+        id_proyecto: idNuevo,
         nombre_direccion: document.getElementById('nombre_direccion').value,
         pais: document.getElementById('pais').value,
         fecha_compra: document.getElementById('fecha_compra').value,
         estado: document.getElementById('estado').value,
-        fecha_venta_estimada: document.getElementById('fecha_venta_estimada').value
+        fecha_venta_estimada: document.getElementById('fecha_venta_estimada').value,
+        precio_venta_estimado: document.getElementById('precio_venta_estimado').value
       };
-      postFila('Proyectos', fields).then(function(data) {
+      const presupuesto = [
+        { id_proyecto: idNuevo, rubro: 'compra', sub_rubro: '', monto_presupuestado: document.getElementById('presupuesto_compra').value || 0 },
+        { id_proyecto: idNuevo, rubro: 'remodelacion', sub_rubro: '', monto_presupuestado: document.getElementById('presupuesto_remodelacion').value || 0 },
+        { id_proyecto: idNuevo, rubro: 'cierre_venta', sub_rubro: '', monto_presupuestado: document.getElementById('presupuesto_cierre').value || 0 }
+      ];
+      postJson({ modo: 'nuevo_proyecto', proyecto: proyecto, presupuesto: presupuesto }).then(function(data) {
         btn.disabled = false;
-        if (data.ok) { msg.textContent = 'Guardado.'; msg.className = 'ok'; document.getElementById('f').reset(); }
+        if (data.ok) { msg.textContent = 'Proyecto creado.'; msg.className = 'ok'; document.getElementById('f').reset(); }
         else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
       }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
 
     } else if (activeTab === 'financiamiento') {
       const tipo = document.getElementById('tipo_fuente').value;
+      const destino = document.getElementById('destino').value;
       const idProyecto = document.getElementById('proyecto_fin').value;
+
+      function registrarGastoSiCompra(montoTotal, fecha) {
+        if (destino !== 'compra' || !montoTotal) return Promise.resolve({ ok: true });
+        return postFila('Ejecucion', {
+          id_proyecto: idProyecto,
+          fecha: fecha,
+          rubro: 'compra',
+          sub_rubro: '',
+          monto: montoTotal,
+          proveedor_gc: '',
+          comprobante_nota: 'Generado automáticamente desde financiamiento de compra'
+        });
+      }
 
       if (tipo === 'propio') {
         const total = socios.reduce(function(acc, s) { return acc + (parseFloat(s.pct) || 0); }, 0);
@@ -273,37 +325,45 @@
             tasa_anual: '',
             fecha_desembolso: fecha,
             penalidad_prepago: '',
-            retorno_pactado: ''
+            retorno_pactado: '',
+            destino: destino
           });
         });
 
         Promise.all(envios).then(function(resultados) {
-          btn.disabled = false;
           const fallo = resultados.find(function(r) { return !r.ok; });
-          if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; }
-          else {
+          if (fallo) { btn.disabled = false; msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
+          return registrarGastoSiCompra(montoTotal, fecha).then(function() {
+            btn.disabled = false;
             msg.textContent = 'Guardado (' + socios.length + ' socios).';
             msg.className = 'ok';
             document.getElementById('monto_propio_total').value = '';
-          }
+          });
         }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
 
       } else {
         btn.disabled = true;
+        const monto = document.getElementById('monto_fin').value;
+        const fecha = document.getElementById('fecha_desembolso').value;
         const fields = {
           id_proyecto: idProyecto,
           tipo_fuente: tipo,
           nombre_prestamista_inversor: document.getElementById('nombre_prestamista_inversor').value,
-          monto: document.getElementById('monto_fin').value,
+          monto: monto,
           tasa_anual: document.getElementById('tasa_anual').value,
-          fecha_desembolso: document.getElementById('fecha_desembolso').value,
+          fecha_desembolso: fecha,
           penalidad_prepago: document.getElementById('penalidad_prepago').value,
-          retorno_pactado: document.getElementById('retorno_pactado').value
+          retorno_pactado: document.getElementById('retorno_pactado').value,
+          destino: destino
         };
         postFila('Financiamiento', fields).then(function(data) {
-          btn.disabled = false;
-          if (data.ok) { msg.textContent = 'Guardado.'; msg.className = 'ok'; document.getElementById('f').reset(); }
-          else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+          if (!data.ok) { btn.disabled = false; msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }
+          return registrarGastoSiCompra(parseFloat(monto) || 0, fecha).then(function() {
+            btn.disabled = false;
+            msg.textContent = 'Guardado.';
+            msg.className = 'ok';
+            document.getElementById('f').reset();
+          });
         }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
       }
 

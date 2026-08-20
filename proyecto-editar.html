@@ -62,6 +62,12 @@
         <option value="inversor">Inversor</option>
       </select>
 
+      <label for="destino">Destino</label>
+      <select id="destino">
+        <option value="compra">Compra</option>
+        <option value="remodelacion">Remodelación</option>
+      </select>
+
       <div id="fecha-monto-propio">
         <label for="monto_propio_total">Monto total aportado</label>
         <input type="number" id="monto_propio_total" step="0.01" min="0">
@@ -298,7 +304,16 @@
     const btn = document.getElementById('btn-financiamiento');
     const msg = document.getElementById('msg-financiamiento');
     const tipo = document.getElementById('tipo_fuente').value;
+    const destino = document.getElementById('destino').value;
     msg.textContent = '';
+
+    function registrarGastoSiCompra(montoTotal, fecha) {
+      if (destino !== 'compra' || !montoTotal) return Promise.resolve({ ok: true });
+      return postFila({ sheet: 'Ejecucion', fields: {
+        id_proyecto: idProyecto, fecha: fecha, rubro: 'compra', sub_rubro: '',
+        monto: montoTotal, proveedor_gc: '', comprobante_nota: 'Generado automáticamente desde financiamiento de compra'
+      }});
+    }
 
     if (tipo === 'propio') {
       const total = socios.reduce(function(a, s) { return a + (parseFloat(s.pct) || 0); }, 0);
@@ -310,28 +325,35 @@
         return postFila({ sheet: 'Financiamiento', fields: {
           id_proyecto: idProyecto, tipo_fuente: 'propio', nombre_prestamista_inversor: s.nombre,
           monto: (montoTotal * (parseFloat(s.pct) || 0) / 100).toFixed(2),
-          tasa_anual: '', fecha_desembolso: fecha, penalidad_prepago: '', retorno_pactado: ''
+          tasa_anual: '', fecha_desembolso: fecha, penalidad_prepago: '', retorno_pactado: '', destino: destino
         }});
       })).then(function(resultados) {
-        btn.disabled = false;
         const fallo = resultados.find(function(r) { return !r.ok; });
-        if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; }
-        else { msg.textContent = 'Guardado.'; msg.className = 'ok'; cargarDetalle(); }
+        if (fallo) { btn.disabled = false; msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
+        return registrarGastoSiCompra(montoTotal, fecha).then(function() {
+          btn.disabled = false;
+          msg.textContent = 'Guardado.'; msg.className = 'ok'; cargarDetalle();
+        });
       }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     } else {
       btn.disabled = true;
+      const monto = document.getElementById('monto_fin').value;
+      const fecha = document.getElementById('fecha_desembolso').value;
       postFila({ sheet: 'Financiamiento', fields: {
         id_proyecto: idProyecto, tipo_fuente: tipo,
         nombre_prestamista_inversor: document.getElementById('nombre_prestamista_inversor').value,
-        monto: document.getElementById('monto_fin').value,
+        monto: monto,
         tasa_anual: document.getElementById('tasa_anual').value,
-        fecha_desembolso: document.getElementById('fecha_desembolso').value,
+        fecha_desembolso: fecha,
         penalidad_prepago: document.getElementById('penalidad_prepago').value,
-        retorno_pactado: document.getElementById('retorno_pactado').value
+        retorno_pactado: document.getElementById('retorno_pactado').value,
+        destino: destino
       }}).then(function(data) {
-        btn.disabled = false;
-        if (data.ok) { msg.textContent = 'Guardado.'; msg.className = 'ok'; cargarDetalle(); }
-        else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+        if (!data.ok) { btn.disabled = false; msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }
+        return registrarGastoSiCompra(parseFloat(monto) || 0, fecha).then(function() {
+          btn.disabled = false;
+          msg.textContent = 'Guardado.'; msg.className = 'ok'; cargarDetalle();
+        });
       }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     }
   });

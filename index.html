@@ -19,8 +19,8 @@
 <div class="wrap">
   <div class="kpi-grid">
     <div class="kpi pastel-green" id="kpi-ganancia-card"><p class="label">Ganancia del año</p><p class="value" id="kpi-ganancia">—</p></div>
-    <div class="kpi pastel-blue"><p class="label">Activos</p><p class="value" id="kpi-activos">—</p></div>
-    <div class="kpi pastel-amber"><p class="label">Pasivos</p><p class="value" id="kpi-pasivos">—</p></div>
+    <div class="kpi pastel-blue" id="kpi-activos-card" style="cursor:pointer"><p class="label">Activos</p><p class="value" id="kpi-activos">—</p></div>
+    <div class="kpi pastel-amber" id="kpi-pasivos-card" style="cursor:pointer"><p class="label">Pasivos</p><p class="value" id="kpi-pasivos">—</p></div>
   </div>
 
   <div class="card">
@@ -33,12 +33,22 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-detalle">
+  <div class="modal" style="max-width:420px">
+    <h3 id="modal-detalle-titulo">Detalle</h3>
+    <div id="modal-detalle-lista" style="margin:14px 0"></div>
+    <button type="button" class="btn secondary" id="btn-cerrar-modal" style="width:100%;justify-content:center">Cerrar</button>
+  </div>
+</div>
+
 <script>
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
 
   function fmt(n) {
     return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
   }
+
+  let ultimoDashboard = null;
 
   fetch(APPS_SCRIPT_URL + '?accion=dashboard')
     .then(function(r) { return r.json(); })
@@ -48,6 +58,7 @@
         return;
       }
       const d = res.data;
+      ultimoDashboard = d;
 
       const kg = document.getElementById('kpi-ganancia');
       kg.textContent = fmt(d.ganancia_anio);
@@ -78,6 +89,38 @@
     .catch(function() {
       document.getElementById('lista-proyectos').innerHTML = '<p class="sub" style="margin:0">No se pudo conectar.</p>';
     });
+
+  function abrirModalDetalle(titulo, filas) {
+    document.getElementById('modal-detalle-titulo').textContent = titulo;
+    const cont = document.getElementById('modal-detalle-lista');
+    if (!filas.length) {
+      cont.innerHTML = '<p class="sub" style="margin:0">Sin datos todavía.</p>';
+    } else {
+      cont.innerHTML = filas.map(function(f) {
+        return '<div class="hist-row"><span>' + f.label + '</span><span>' + fmt(f.monto) + '</span></div>';
+      }).join('');
+    }
+    document.getElementById('modal-detalle').classList.add('show');
+  }
+
+  document.getElementById('kpi-activos-card').addEventListener('click', function() {
+    if (!ultimoDashboard) return;
+    const filas = ultimoDashboard.proyectos_activos
+      .filter(function(p) { return p.ejecutado > 0; })
+      .map(function(p) { return { label: p.nombre || p.id, monto: p.ejecutado }; });
+    abrirModalDetalle('Activos por proyecto', filas);
+  });
+
+  document.getElementById('kpi-pasivos-card').addEventListener('click', function() {
+    if (!ultimoDashboard) return;
+    const filas = (ultimoDashboard.pasivos_detalle || [])
+      .map(function(f) { return { label: f.proyecto + (f.nombre ? ' · ' + f.nombre : ''), monto: f.monto }; });
+    abrirModalDetalle('Pasivos por fuente', filas);
+  });
+
+  document.getElementById('btn-cerrar-modal').addEventListener('click', function() {
+    document.getElementById('modal-detalle').classList.remove('show');
+  });
 </script>
 </body>
 </html>
