@@ -21,12 +21,21 @@
 
   <div class="card">
   <div class="tabs">
-    <div class="tab active" data-target="datos">Datos</div>
+    <div class="tab active" data-target="resumen">Resumen</div>
+    <div class="tab" data-target="datos">Datos</div>
     <div class="tab" data-target="financiamiento">Financiamiento</div>
     <div class="tab" data-target="cierre">Cierre y venta</div>
   </div>
 
-  <div class="section active" id="tab-datos">
+  <div class="section active" id="tab-resumen">
+    <p class="sub" style="margin:0 0 10px">Totales estimados</p>
+    <div id="resumen-estimados" class="card"></div>
+
+    <p class="sub" style="margin:20px 0 10px">Totales reales <span style="color:var(--text-muted)">(tocá cada rubro para ver el detalle)</span></p>
+    <div id="resumen-reales"></div>
+  </div>
+
+  <div class="section" id="tab-datos">
     <form id="f-proyecto">
       <label for="nombre_direccion">Nombre / dirección</label>
       <input type="text" id="nombre_direccion">
@@ -323,6 +332,7 @@
         }
 
         document.getElementById('contenido').style.display = 'block';
+        renderResumen(res.data.presupuesto || [], res.data.ejecucion || [], fin);
       })
       .catch(function() {
         document.getElementById('titulo').textContent = 'No se pudo conectar';
@@ -330,6 +340,81 @@
   }
 
   function fmt(n) { return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 }); }
+
+  function renderResumen(presupuesto, ejecucion, financiamiento) {
+    const rubros = [
+      { key: 'compra', label: 'Compra' },
+      { key: 'remodelacion', label: 'Remodelación' },
+      { key: 'cierre_venta', label: 'Cierre' }
+    ];
+
+    const estimadoPorRubro = {};
+    presupuesto.forEach(function(p) { estimadoPorRubro[p.rubro] = (estimadoPorRubro[p.rubro] || 0) + (parseFloat(p.monto_presupuestado) || 0); });
+    const totalEstimado = rubros.reduce(function(a, r) { return a + (estimadoPorRubro[r.key] || 0); }, 0);
+
+    const estCont = document.getElementById('resumen-estimados');
+    estCont.innerHTML = rubros.map(function(r) {
+      return '<div class="hist-row"><span>' + r.label + '</span><span>' + fmt(estimadoPorRubro[r.key] || 0) + '</span></div>';
+    }).join('') + '<div class="hist-row" style="font-weight:600;border-bottom:none"><span>Total</span><span>' + fmt(totalEstimado) + '</span></div>';
+
+    const realPorRubro = {};
+    ejecucion.forEach(function(e) { realPorRubro[e.rubro] = (realPorRubro[e.rubro] || 0) + (parseFloat(e.monto) || 0); });
+    const finPorDestino = {};
+    financiamiento.forEach(function(f) { if (f.destino) finPorDestino[f.destino] = (finPorDestino[f.destino] || 0) + (parseFloat(f.monto) || 0); });
+
+    const realCont = document.getElementById('resumen-reales');
+    realCont.innerHTML = '';
+    rubros.forEach(function(r) {
+      const real = realPorRubro[r.key] || 0;
+      const tieneFinanciamiento = r.key !== 'cierre_venta';
+      const financiado = finPorDestino[r.key] || 0;
+      const gastos = ejecucion.filter(function(e) { return e.rubro === r.key; });
+      const fuentes = financiamiento.filter(function(f) { return f.destino === r.key; });
+
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.cursor = 'pointer';
+      card.style.marginBottom = '10px';
+      const idDet = 'det-' + r.key;
+      card.innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+          '<span style="font-weight:500">' + r.label + '</span>' +
+          '<span style="font-variant-numeric:tabular-nums">' + fmt(real) +
+            (tieneFinanciamiento ? ' <span style="color:' + (financiado < real ? 'var(--danger)' : 'var(--text-secondary)') + ';font-size:12px">· financiado ' + fmt(financiado) + '</span>' : '') +
+          '</span>' +
+        '</div>' +
+        '<div id="' + idDet + '" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:10px"></div>';
+      card.addEventListener('click', function() {
+        const det = card.querySelector('#' + idDet);
+        const abierto = det.style.display === 'block';
+        det.style.display = abierto ? 'none' : 'block';
+        if (!abierto && !det.dataset.cargado) {
+          let html = '';
+          if (gastos.length) {
+            html += '<p class="sub" style="margin:0 0 6px">Gastos reales</p>';
+            gastos.forEach(function(g) {
+              html += '<div class="hist-row" style="font-size:12px"><span>' + (g.sub_rubro || g.fecha || '—') + (g.proveedor_gc ? ' · ' + g.proveedor_gc : '') + '</span><span>' + fmt(g.monto) + '</span></div>';
+            });
+          } else {
+            html += '<p class="sub" style="margin:0 0 6px">Sin gastos cargados todavía.</p>';
+          }
+          if (tieneFinanciamiento) {
+            if (fuentes.length) {
+              html += '<p class="sub" style="margin:12px 0 6px">Financiado por</p>';
+              fuentes.forEach(function(f) {
+                html += '<div class="hist-row" style="font-size:12px"><span><span class="tag">' + f.tipo_fuente + '</span>' + (f.nombre_prestamista_inversor || '') + '</span><span>' + fmt(f.monto) + '</span></div>';
+              });
+            } else {
+              html += '<p class="sub" style="margin:12px 0 0">Sin fuentes de financiamiento con este destino todavía.</p>';
+            }
+          }
+          det.innerHTML = html;
+          det.dataset.cargado = '1';
+        }
+      });
+      realCont.appendChild(card);
+    });
+  }
 
   // --- Guardar datos del proyecto ---
   document.getElementById('f-proyecto').addEventListener('submit', function(e) {
