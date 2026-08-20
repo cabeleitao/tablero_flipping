@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cargar gasto — Flipping</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+    color: #191919;
+    background: #ffffff;
+  }
+  h1 { font-size: 18px; font-weight: 500; margin: 0 0 4px; }
+  p.sub { font-size: 13px; color: #6b6b6b; margin: 0 0 32px; }
+  label { display: block; font-size: 13px; color: #6b6b6b; margin: 20px 0 6px; }
+  input, select, textarea {
+    width: 100%;
+    font-size: 15px;
+    padding: 10px 0;
+    border: none;
+    border-bottom: 1px solid #e4e4e2;
+    background: transparent;
+    font-family: inherit;
+    color: #191919;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-bottom: 1px solid #191919;
+  }
+  textarea { resize: vertical; min-height: 44px; }
+  button {
+    margin-top: 32px;
+    width: 100%;
+    padding: 13px;
+    background: #191919;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  button:disabled { background: #b4b4b4; cursor: default; }
+  #msg { margin-top: 16px; font-size: 13px; text-align: center; }
+  #msg.ok { color: #1a7f37; }
+  #msg.err { color: #c0362c; }
+</style>
+</head>
+<body>
+
+<h1>Cargar gasto</h1>
+<p class="sub">Ejecución de obra</p>
+
+<form id="f">
+  <label for="proyecto">Proyecto</label>
+  <select id="proyecto" required>
+    <option value="">Cargando proyectos…</option>
+  </select>
+
+  <label for="fecha">Fecha</label>
+  <input type="date" id="fecha" required>
+
+  <label for="rubro">Rubro</label>
+  <select id="rubro" required>
+    <option value="compra">Compra</option>
+    <option value="remodelacion" selected>Remodelación</option>
+    <option value="cierre_venta">Cierre / venta</option>
+  </select>
+
+  <label for="sub_rubro">Sub-rubro (opcional)</label>
+  <input type="text" id="sub_rubro" placeholder="ej: cocina, baños, techo">
+
+  <label for="monto">Monto</label>
+  <input type="number" id="monto" step="0.01" min="0" required>
+
+  <label for="proveedor_gc">Proveedor / GC</label>
+  <input type="text" id="proveedor_gc">
+
+  <label for="comprobante_nota">Comprobante o nota</label>
+  <textarea id="comprobante_nota"></textarea>
+
+  <button type="submit" id="btn">Guardar gasto</button>
+  <div id="msg"></div>
+</form>
+
+<script>
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
+
+  document.getElementById('fecha').valueAsDate = new Date();
+
+  fetch(APPS_SCRIPT_URL + '?accion=proyectos')
+    .then(r => r.json())
+    .then(data => {
+      const sel = document.getElementById('proyecto');
+      sel.innerHTML = '';
+      if (!data.ok || !data.proyectos.length) {
+        sel.innerHTML = '<option value="">No hay proyectos cargados</option>';
+        return;
+      }
+      data.proyectos.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.nombre + ' (' + p.estado + ')';
+        sel.appendChild(opt);
+      });
+    })
+    .catch(() => {
+      document.getElementById('proyecto').innerHTML = '<option value="">Error al cargar proyectos</option>';
+    });
+
+  document.getElementById('f').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn');
+    const msg = document.getElementById('msg');
+    btn.disabled = true;
+    msg.textContent = '';
+    msg.className = '';
+
+    const fields = {
+      id_proyecto: document.getElementById('proyecto').value,
+      fecha: document.getElementById('fecha').value,
+      rubro: document.getElementById('rubro').value,
+      sub_rubro: document.getElementById('sub_rubro').value,
+      monto: document.getElementById('monto').value,
+      proveedor_gc: document.getElementById('proveedor_gc').value,
+      comprobante_nota: document.getElementById('comprobante_nota').value
+    };
+
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ sheet: 'Ejecucion', fields: fields })
+    })
+      .then(r => r.json())
+      .then(data => {
+        btn.disabled = false;
+        if (data.ok) {
+          msg.textContent = 'Gasto guardado.';
+          msg.className = 'ok';
+          document.getElementById('f').reset();
+          document.getElementById('fecha').valueAsDate = new Date();
+        } else {
+          msg.textContent = 'Error: ' + data.error;
+          msg.className = 'err';
+        }
+      })
+      .catch(() => {
+        btn.disabled = false;
+        msg.textContent = 'No se pudo conectar. Reintentá.';
+        msg.className = 'err';
+      });
+  });
+</script>
+
+</body>
+</html>

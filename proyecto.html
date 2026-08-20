@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cargar proyecto — Flipping</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+    color: #191919;
+    background: #ffffff;
+  }
+  h1 { font-size: 18px; font-weight: 500; margin: 0 0 20px; }
+  .tabs { display: flex; gap: 24px; border-bottom: 1px solid #e4e4e2; margin-bottom: 28px; }
+  .tab {
+    font-size: 14px;
+    color: #6b6b6b;
+    padding-bottom: 12px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .tab.active { color: #191919; font-weight: 500; border-bottom: 2px solid #191919; }
+  .section { display: none; }
+  .section.active { display: block; }
+  label { display: block; font-size: 13px; color: #6b6b6b; margin: 20px 0 6px; }
+  input, select, textarea {
+    width: 100%;
+    font-size: 15px;
+    padding: 10px 0;
+    border: none;
+    border-bottom: 1px solid #e4e4e2;
+    background: transparent;
+    font-family: inherit;
+    color: #191919;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-bottom: 1px solid #191919;
+  }
+  button {
+    margin-top: 32px;
+    width: 100%;
+    padding: 13px;
+    background: #191919;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  button:disabled { background: #b4b4b4; cursor: default; }
+  #msg { margin-top: 16px; font-size: 13px; text-align: center; }
+  #msg.ok { color: #1a7f37; }
+  #msg.err { color: #c0362c; }
+</style>
+</head>
+<body>
+
+<h1>Cargar proyecto</h1>
+
+<div class="tabs">
+  <div class="tab active" data-target="nuevo">Nuevo proyecto</div>
+  <div class="tab" data-target="financiamiento">Financiamiento</div>
+  <div class="tab" data-target="cierre">Cierre y venta</div>
+</div>
+
+<form id="f">
+
+  <div class="section active" id="sec-nuevo">
+    <label for="nombre_direccion">Nombre / dirección</label>
+    <input type="text" id="nombre_direccion">
+
+    <label for="pais">País</label>
+    <select id="pais">
+      <option value="ARG">Argentina</option>
+      <option value="USA">USA</option>
+    </select>
+
+    <label for="fecha_compra">Fecha de compra</label>
+    <input type="date" id="fecha_compra">
+
+    <label for="estado">Estado</label>
+    <select id="estado">
+      <option value="analisis">Análisis</option>
+      <option value="en_curso" selected>En curso</option>
+      <option value="vendido">Vendido</option>
+    </select>
+
+    <label for="fecha_venta_estimada">Fecha de venta estimada</label>
+    <input type="date" id="fecha_venta_estimada">
+  </div>
+
+  <div class="section" id="sec-financiamiento">
+    <label for="proyecto_fin">Proyecto</label>
+    <select id="proyecto_fin"><option value="">Cargando proyectos…</option></select>
+
+    <label for="tipo_fuente">Tipo de fuente</label>
+    <select id="tipo_fuente">
+      <option value="propio">Capital propio</option>
+      <option value="prestamo">Préstamo de terceros</option>
+      <option value="inversor">Inversor</option>
+    </select>
+
+    <label for="nombre_prestamista_inversor">Nombre del prestamista o inversor</label>
+    <input type="text" id="nombre_prestamista_inversor">
+
+    <label for="monto_fin">Monto</label>
+    <input type="number" id="monto_fin" step="0.01" min="0">
+
+    <label for="tasa_anual">Tasa anual (%)</label>
+    <input type="number" id="tasa_anual" step="0.01" min="0">
+
+    <label for="fecha_desembolso">Fecha de desembolso</label>
+    <input type="date" id="fecha_desembolso">
+
+    <label for="penalidad_prepago">Penalidad por cancelación anticipada</label>
+    <input type="text" id="penalidad_prepago" placeholder="ej: 1 año, 2% del saldo">
+
+    <label for="retorno_pactado">Retorno pactado (solo inversores)</label>
+    <input type="text" id="retorno_pactado" placeholder="ej: 14% anual">
+  </div>
+
+  <div class="section" id="sec-cierre">
+    <label for="proyecto_cierre">Proyecto</label>
+    <select id="proyecto_cierre"><option value="">Cargando proyectos…</option></select>
+
+    <label for="fecha_venta">Fecha de venta</label>
+    <input type="date" id="fecha_venta">
+
+    <label for="precio_venta">Precio de venta</label>
+    <input type="number" id="precio_venta" step="0.01" min="0">
+
+    <label for="gastos_cierre_venta">Gastos de cierre de venta</label>
+    <input type="number" id="gastos_cierre_venta" step="0.01" min="0">
+
+    <label for="fecha_cancelacion_prestamo">Fecha de cancelación del préstamo</label>
+    <input type="date" id="fecha_cancelacion_prestamo">
+  </div>
+
+  <button type="submit" id="btn">Guardar</button>
+  <div id="msg"></div>
+</form>
+
+<script>
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
+  let activeTab = 'nuevo';
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      tab.classList.add('active');
+      activeTab = tab.dataset.target;
+      document.getElementById('sec-' + activeTab).classList.add('active');
+      document.getElementById('msg').textContent = '';
+    });
+  });
+
+  function cargarProyectos(selectId) {
+    fetch(APPS_SCRIPT_URL + '?accion=proyectos')
+      .then(r => r.json())
+      .then(data => {
+        const sel = document.getElementById(selectId);
+        sel.innerHTML = '';
+        if (!data.ok || !data.proyectos.length) {
+          sel.innerHTML = '<option value="">No hay proyectos cargados</option>';
+          return;
+        }
+        data.proyectos.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.nombre + ' (' + p.estado + ')';
+          sel.appendChild(opt);
+        });
+      })
+      .catch(() => {
+        document.getElementById(selectId).innerHTML = '<option value="">Error al cargar proyectos</option>';
+      });
+  }
+  cargarProyectos('proyecto_fin');
+  cargarProyectos('proyecto_cierre');
+
+  function generarIdProyecto(nombre) {
+    const slug = (nombre || 'proyecto')
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .slice(0, 24);
+    return slug + '-' + Date.now().toString(36);
+  }
+
+  document.getElementById('f').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn');
+    const msg = document.getElementById('msg');
+    btn.disabled = true;
+    msg.textContent = '';
+    msg.className = '';
+
+    let sheet, fields;
+
+    if (activeTab === 'nuevo') {
+      sheet = 'Proyectos';
+      fields = {
+        id_proyecto: generarIdProyecto(document.getElementById('nombre_direccion').value),
+        nombre_direccion: document.getElementById('nombre_direccion').value,
+        pais: document.getElementById('pais').value,
+        fecha_compra: document.getElementById('fecha_compra').value,
+        estado: document.getElementById('estado').value,
+        fecha_venta_estimada: document.getElementById('fecha_venta_estimada').value
+      };
+    } else if (activeTab === 'financiamiento') {
+      sheet = 'Financiamiento';
+      fields = {
+        id_proyecto: document.getElementById('proyecto_fin').value,
+        tipo_fuente: document.getElementById('tipo_fuente').value,
+        nombre_prestamista_inversor: document.getElementById('nombre_prestamista_inversor').value,
+        monto: document.getElementById('monto_fin').value,
+        tasa_anual: document.getElementById('tasa_anual').value,
+        fecha_desembolso: document.getElementById('fecha_desembolso').value,
+        penalidad_prepago: document.getElementById('penalidad_prepago').value,
+        retorno_pactado: document.getElementById('retorno_pactado').value
+      };
+    } else {
+      sheet = 'Cierre_venta';
+      fields = {
+        id_proyecto: document.getElementById('proyecto_cierre').value,
+        fecha_venta: document.getElementById('fecha_venta').value,
+        precio_venta: document.getElementById('precio_venta').value,
+        gastos_cierre_venta: document.getElementById('gastos_cierre_venta').value,
+        fecha_cancelacion_prestamo: document.getElementById('fecha_cancelacion_prestamo').value
+      };
+    }
+
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ sheet: sheet, fields: fields })
+    })
+      .then(r => r.json())
+      .then(data => {
+        btn.disabled = false;
+        if (data.ok) {
+          msg.textContent = 'Guardado.';
+          msg.className = 'ok';
+          document.getElementById('f').reset();
+          cargarProyectos('proyecto_fin');
+          cargarProyectos('proyecto_cierre');
+        } else {
+          msg.textContent = 'Error: ' + data.error;
+          msg.className = 'err';
+        }
+      })
+      .catch(() => {
+        btn.disabled = false;
+        msg.textContent = 'No se pudo conectar. Reintentá.';
+        msg.className = 'err';
+      });
+  });
+</script>
+
+</body>
+</html>
