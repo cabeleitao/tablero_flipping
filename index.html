@@ -20,22 +20,12 @@
   <div class="kpi-grid">
     <div class="kpi pastel-green" id="kpi-ganancia-card"><p class="label">Ganancia del año</p><p class="value" id="kpi-ganancia">—</p></div>
     <div class="kpi pastel-blue" id="kpi-activos-card" style="cursor:pointer"><p class="label">Activos</p><p class="value" id="kpi-activos">—</p></div>
-    <div class="kpi pastel-amber" id="kpi-pasivos-card" style="cursor:pointer"><p class="label">Pasivos</p><p class="value" id="kpi-pasivos">—</p></div>
+    <div class="kpi pastel-amber" id="kpi-financiacion-card" style="cursor:pointer"><p class="label">Financiación</p><p class="value" id="kpi-financiacion">—</p></div>
   </div>
 
   <div class="card">
     <h2>Proyectos activos</h2>
     <div id="lista-proyectos"><p class="sub" style="margin:0">Cargando…</p></div>
-  </div>
-
-  <div class="card" id="card-cuentas">
-    <h2>Cuenta corriente por actor</h2>
-    <div id="cuadro-cuentas"><p class="sub" style="margin:0">Cargando…</p></div>
-  </div>
-
-  <div class="card" id="card-financiero">
-    <h2>Financiamiento activo por proyecto</h2>
-    <div id="cuadro-financiero"><p class="sub" style="margin:0">Cargando…</p></div>
   </div>
 
   <div class="card" id="card-vendidos" style="display:none">
@@ -45,33 +35,15 @@
 
   <div class="actions">
     <a class="btn" href="proyecto.html">+ Nuevo proyecto</a>
-    <button type="button" class="btn secondary" id="btn-mostrar-movimiento">+ Aporte / retiro de cuenta</button>
-  </div>
-
-  <div class="card" id="card-movimiento" style="display:none;margin-top:16px">
-    <p class="sub" style="margin:0 0 8px;text-transform:uppercase;letter-spacing:0.04em;font-weight:600">Registrar movimiento de cuenta</p>
-    <label for="mov-actor">Actor</label>
-    <input type="text" id="mov-actor" placeholder="Nombre del socio, inversor o banco">
-    <label for="mov-tipo">Tipo de movimiento</label>
-    <select id="mov-tipo">
-      <option value="aporte_externo">Aporte externo (entra plata)</option>
-      <option value="retiro">Retiro (sale plata del sistema)</option>
-    </select>
-    <label for="mov-monto">Monto</label>
-    <input type="number" id="mov-monto" step="0.01" min="0">
-    <label for="mov-fecha">Fecha</label>
-    <input type="date" id="mov-fecha">
-    <label for="mov-nota">Nota</label>
-    <input type="text" id="mov-nota">
-    <button type="button" id="btn-guardar-movimiento" style="width:100%;margin-top:20px;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;cursor:pointer;font-weight:600">Guardar</button>
-    <div id="msg-movimiento"></div>
   </div>
 </div>
 
 <div class="modal-overlay" id="modal-detalle">
   <div class="modal" style="max-width:420px">
+    <p class="sub" id="modal-detalle-atras" style="display:none;cursor:pointer;margin:0 0 8px">← Atrás</p>
     <h3 id="modal-detalle-titulo">Detalle</h3>
     <div id="modal-detalle-lista" style="margin:14px 0"></div>
+    <div id="modal-detalle-form" style="display:none"></div>
     <button type="button" class="btn secondary" id="btn-cerrar-modal" style="width:100%;justify-content:center">Cerrar</button>
   </div>
 </div>
@@ -82,6 +54,8 @@
   function fmt(n) {
     return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
   }
+
+  const ETIQUETAS_CATEGORIA = { propio: 'Capital propio', inversor: 'Inversores', prestamo: 'Préstamos' };
 
   let ultimoDashboard = null;
 
@@ -100,7 +74,10 @@
       document.getElementById('kpi-ganancia-card').className = 'kpi ' + (d.ganancia_anio >= 0 ? 'pastel-green' : 'pastel-red');
 
       document.getElementById('kpi-activos').textContent = fmt(d.activos);
-      document.getElementById('kpi-pasivos').textContent = fmt(d.pasivos);
+
+      const r = d.financiamiento_resumen || { propio: 0, prestamo: 0, inversor: 0 };
+      const totalFinanciacion = (r.propio || 0) + (r.prestamo || 0) + (r.inversor || 0);
+      document.getElementById('kpi-financiacion').textContent = fmt(totalFinanciacion);
 
       const cont = document.getElementById('lista-proyectos');
       if (!d.proyectos_activos.length) {
@@ -120,26 +97,6 @@
           '</div>';
         cont.appendChild(a);
       });
-
-      const finCont = document.getElementById('cuadro-financiero');
-      const detalle = d.financiamiento_detalle || [];
-      if (!detalle.length) {
-        finCont.innerHTML = '<p class="sub" style="margin:0">Sin financiamiento activo todavía.</p>';
-      } else {
-        finCont.innerHTML = detalle.map(function(f) {
-          return '<div class="hist-row"><span>' + f.proyecto + ' · ' + f.tipo_fuente + (f.nombre ? ' (' + f.nombre + ')' : '') + '</span><span>' + fmt(f.monto) + '</span></div>';
-        }).join('');
-      }
-
-      const cuentasCont = document.getElementById('cuadro-cuentas');
-      const actores = d.actores_resumen || [];
-      if (!actores.length) {
-        cuentasCont.innerHTML = '<p class="sub" style="margin:0">Sin movimientos todavía.</p>';
-      } else {
-        cuentasCont.innerHTML = actores.map(function(a) {
-          return '<div class="hist-row"><span>' + a.actor + '</span><span style="color:' + (a.saldo < 0 ? 'var(--danger)' : 'var(--text-secondary)') + '">' + fmt(a.saldo) + '</span></div>';
-        }).join('');
-      }
 
       const vendidos = d.proyectos_vendidos || [];
       if (vendidos.length) {
@@ -164,76 +121,112 @@
       document.getElementById('lista-proyectos').innerHTML = '<p class="sub" style="margin:0">No se pudo conectar.</p>';
     });
 
-  function abrirModalDetalle(titulo, filas) {
+  // --- Modal de Financiación con 3 niveles: categoría → actor → aporte/retiro ---
+
+  function abrirModal(titulo, filasHtml, mostrarAtras, onAtras) {
     document.getElementById('modal-detalle-titulo').textContent = titulo;
-    const cont = document.getElementById('modal-detalle-lista');
-    if (!filas.length) {
-      cont.innerHTML = '<p class="sub" style="margin:0">Sin datos todavía.</p>';
-    } else {
-      cont.innerHTML = filas.map(function(f) {
-        return '<div class="hist-row"><span>' + f.label + '</span><span>' + fmt(f.monto) + '</span></div>';
-      }).join('');
-    }
+    document.getElementById('modal-detalle-lista').innerHTML = filasHtml;
+    document.getElementById('modal-detalle-form').style.display = 'none';
+    const atras = document.getElementById('modal-detalle-atras');
+    atras.style.display = mostrarAtras ? 'block' : 'none';
+    atras.onclick = onAtras || null;
     document.getElementById('modal-detalle').classList.add('show');
   }
+
+  function mostrarNivelCategorias() {
+    if (!ultimoDashboard) return;
+    const r = ultimoDashboard.financiamiento_resumen || { propio: 0, prestamo: 0, inversor: 0 };
+    const filas = ['propio', 'inversor', 'prestamo'].map(function(cat) {
+      return '<div class="hist-row categoria-fin" data-cat="' + cat + '" style="cursor:pointer"><span>' + ETIQUETAS_CATEGORIA[cat] + '</span><span>' + fmt(r[cat]) + '</span></div>';
+    }).join('');
+    abrirModal('Financiación', filas, false, null);
+    document.querySelectorAll('.categoria-fin').forEach(function(el) {
+      el.addEventListener('click', function() { mostrarNivelActores(el.dataset.cat); });
+    });
+  }
+
+  function mostrarNivelActores(categoria) {
+    if (!ultimoDashboard) return;
+    const detalle = (ultimoDashboard.financiamiento_detalle || []).filter(function(f) { return f.tipo_fuente === categoria; });
+    const porActor = {};
+    detalle.forEach(function(f) { porActor[f.nombre] = (porActor[f.nombre] || 0) + f.monto; });
+    const nombres = Object.keys(porActor);
+    const filas = nombres.length
+      ? nombres.map(function(nombre) {
+          return '<div class="hist-row actor-fin" data-actor="' + nombre.replace(/"/g, '&quot;') + '" data-cat="' + categoria + '" style="cursor:pointer"><span>' + nombre + '</span><span>' + fmt(porActor[nombre]) + '</span></div>';
+        }).join('')
+      : '<p class="sub" style="margin:0">Sin financiamiento activo en esta categoría.</p>';
+    abrirModal(ETIQUETAS_CATEGORIA[categoria], filas, true, mostrarNivelCategorias);
+    document.querySelectorAll('.actor-fin').forEach(function(el) {
+      el.addEventListener('click', function() { mostrarNivelActor(el.dataset.actor, el.dataset.cat); });
+    });
+  }
+
+  function mostrarNivelActor(actor, categoria) {
+    const info = (ultimoDashboard.actores_resumen || []).find(function(a) { return a.actor === actor; });
+    const saldo = info ? info.saldo : 0;
+    const filas = '<div class="hist-row"><span>Cuenta corriente</span><span style="color:' + (saldo < 0 ? 'var(--danger)' : 'var(--text-secondary)') + '">' + fmt(saldo) + '</span></div>';
+    abrirModal(actor, filas, true, function() { mostrarNivelActores(categoria); });
+
+    const form = document.getElementById('modal-detalle-form');
+    form.style.display = 'block';
+    form.innerHTML =
+      '<label for="mov-tipo" style="margin-top:16px">Registrar aporte o retiro</label>' +
+      '<select id="mov-tipo">' +
+        '<option value="aporte_externo">Aporte externo (entra plata)</option>' +
+        '<option value="retiro">Retiro (sale plata del sistema)</option>' +
+      '</select>' +
+      '<label for="mov-monto">Monto</label>' +
+      '<input type="number" id="mov-monto" step="0.01" min="0">' +
+      '<label for="mov-fecha">Fecha</label>' +
+      '<input type="date" id="mov-fecha">' +
+      '<label for="mov-nota">Nota</label>' +
+      '<input type="text" id="mov-nota">' +
+      '<button type="button" id="btn-guardar-movimiento" style="width:100%;margin-top:16px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer;font-weight:600">Guardar</button>' +
+      '<div id="msg-movimiento" style="margin-top:8px;font-size:13px"></div>';
+    document.getElementById('mov-fecha').valueAsDate = new Date();
+
+    document.getElementById('btn-guardar-movimiento').addEventListener('click', function() {
+      const msg = document.getElementById('msg-movimiento');
+      const monto = parseFloat(document.getElementById('mov-monto').value) || 0;
+      if (!monto) { msg.textContent = 'Completá el monto.'; msg.className = 'err'; return; }
+      const fields = {
+        mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        actor: actor,
+        tipo_actor: categoria,
+        id_proyecto: '',
+        tipo_movimiento: document.getElementById('mov-tipo').value,
+        monto: monto,
+        fecha: document.getElementById('mov-fecha').value,
+        nota: document.getElementById('mov-nota').value
+      };
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ sheet: 'Movimientos', fields: fields })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.ok) { window.location.reload(); }
+          else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+        })
+        .catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+    });
+  }
+
+  document.getElementById('kpi-financiacion-card').addEventListener('click', mostrarNivelCategorias);
 
   document.getElementById('kpi-activos-card').addEventListener('click', function() {
     if (!ultimoDashboard) return;
     const filas = ultimoDashboard.proyectos_activos
       .filter(function(p) { return p.valor_estimado > 0; })
-      .map(function(p) { return { label: p.nombre || p.id, monto: p.valor_estimado }; });
-    abrirModalDetalle('Activos por proyecto (valor de venta estimado)', filas);
-  });
-
-  document.getElementById('kpi-pasivos-card').addEventListener('click', function() {
-    if (!ultimoDashboard) return;
-    const filas = (ultimoDashboard.pasivos_detalle || [])
-      .map(function(f) { return { label: f.proyecto + (f.nombre ? ' · ' + f.nombre : ''), monto: f.monto }; });
-    abrirModalDetalle('Pasivos por fuente', filas);
+      .map(function(p) { return '<div class="hist-row"><span>' + (p.nombre || p.id) + '</span><span>' + fmt(p.valor_estimado) + '</span></div>'; })
+      .join('') || '<p class="sub" style="margin:0">Sin datos todavía.</p>';
+    abrirModal('Activos por proyecto (valor de venta estimado)', filas, false, null);
   });
 
   document.getElementById('btn-cerrar-modal').addEventListener('click', function() {
     document.getElementById('modal-detalle').classList.remove('show');
-  });
-
-  document.getElementById('btn-mostrar-movimiento').addEventListener('click', function() {
-    const card = document.getElementById('card-movimiento');
-    card.style.display = card.style.display === 'none' ? 'block' : 'none';
-    if (!document.getElementById('mov-fecha').value) {
-      document.getElementById('mov-fecha').valueAsDate = new Date();
-    }
-  });
-
-  document.getElementById('btn-guardar-movimiento').addEventListener('click', function() {
-    const msg = document.getElementById('msg-movimiento');
-    const actor = document.getElementById('mov-actor').value.trim();
-    const monto = parseFloat(document.getElementById('mov-monto').value) || 0;
-    if (!actor || !monto) {
-      msg.textContent = 'Completá el actor y el monto.';
-      msg.className = 'err';
-      return;
-    }
-    const fields = {
-      mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      actor: actor,
-      tipo_actor: 'propio',
-      id_proyecto: '',
-      tipo_movimiento: document.getElementById('mov-tipo').value,
-      monto: monto,
-      fecha: document.getElementById('mov-fecha').value,
-      nota: document.getElementById('mov-nota').value
-    };
-    fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ sheet: 'Movimientos', fields: fields })
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.ok) { window.location.reload(); }
-        else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
-      })
-      .catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
   });
 </script>
 </body>

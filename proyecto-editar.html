@@ -86,8 +86,18 @@
     <div id="hist-financiamiento"><p class="sub" style="margin:0">Sin movimientos cargados todavía.</p></div>
     <p class="sub" id="resumen-financiamiento" style="margin:10px 0 0"></p>
     <div class="actions" style="margin-top:14px">
-      <button type="button" class="btn secondary" id="btn-mostrar-aporte">+ Agregar aporte</button>
-      <button type="button" class="btn secondary" id="btn-mostrar-devolucion">+ Agregar devolución</button>
+      <button type="button" class="btn secondary" id="btn-mostrar-aporte">+ Agregar financiamiento</button>
+      <button type="button" class="btn secondary" id="btn-mostrar-devolucion">+ Refinanciar</button>
+      <button type="button" class="btn secondary" id="btn-mostrar-recupero" style="display:none">Registrar recupero</button>
+    </div>
+
+    <div id="recupero-contenido" style="display:none;margin-top:18px">
+      <p class="sub" style="margin:0 0 4px">Recibido: <span id="recupero-recibido">$0</span> (precio de venta − gastos de cierre)</p>
+      <div id="recupero-filas" style="margin:14px 0"></div>
+      <button type="button" class="add-socio" id="btn-add-recupero">+ Agregar beneficiario</button>
+      <p class="pct-total" id="recupero-total">Asignado: $0 de $0</p>
+      <button type="button" id="btn-guardar-recupero" style="width:100%;margin-top:20px;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;cursor:pointer;font-weight:600">Guardar recupero</button>
+      <div id="msg-recupero"></div>
     </div>
 
     <form id="f-editar-financiamiento" style="display:none;margin-top:18px">
@@ -125,7 +135,7 @@
     </form>
 
     <form id="f-financiamiento" style="display:none;margin-top:18px">
-      <p class="sub" id="titulo-form-financiamiento" style="margin:0 0 6px">Nuevo aporte</p>
+      <p class="sub" id="titulo-form-financiamiento" style="margin:0 0 6px">Nuevo financiamiento</p>
       <input type="hidden" id="tipo_movimiento_nuevo" value="aporte_proyecto">
 
       <label for="tipo_fuente">Tipo de actor</label>
@@ -337,7 +347,7 @@
             row.className = 'hist-row';
             row.innerHTML =
               '<span><span class="tag" style="background:' + (esAporte ? 'var(--accent-soft)' : '#e6f4ea') + ';color:' + (esAporte ? 'var(--accent)' : 'var(--success)') + '">' +
-                (esAporte ? 'APORTE' : 'DEVOLUCIÓN') + '</span>' + (m.actor || '') + ' · ' + (m.tipo_actor || '') + '</span>' +
+                (esAporte ? 'FINANCIAMIENTO' : 'RECUPERO') + '</span>' + (m.actor || '') + ' · ' + (m.tipo_actor || '') + '</span>' +
               '<span style="display:flex;align-items:center;gap:10px">' + fmt(m.monto) + (m.tasa_anual ? ' · ' + m.tasa_anual + '%' : '') +
               (m.mov_id ? ' <button type="button" class="btn ghost editar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' : '') +
               '</span>';
@@ -365,6 +375,7 @@
 
         document.getElementById('contenido').style.display = 'block';
         renderResumen(res.data.presupuesto || [], res.data.ejecucion || [], mov, res.data.cierre);
+        inicializarRecupero(c, mov);
       })
       .catch(function() {
         document.getElementById('titulo').textContent = 'No se pudo conectar';
@@ -567,10 +578,105 @@
     }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
   });
   document.getElementById('btn-mostrar-aporte').addEventListener('click', function() {
-    abrirFormFinanciamiento('aporte_proyecto', 'Nuevo aporte');
+    document.getElementById('recupero-contenido').style.display = 'none';
+    abrirFormFinanciamiento('aporte_proyecto', 'Nuevo financiamiento');
   });
   document.getElementById('btn-mostrar-devolucion').addEventListener('click', function() {
-    abrirFormFinanciamiento('devolucion_proyecto', 'Nueva devolución');
+    document.getElementById('recupero-contenido').style.display = 'none';
+    abrirFormFinanciamiento('devolucion_proyecto', 'Refinanciar (devolución a un actor)');
+  });
+
+  // --- Recupero (reparto final al vender, precargado por actor) ---
+  let recuperoFilas = [];
+  let recuperoRecibido = 0;
+
+  function inicializarRecupero(cierre, movimientos) {
+    const disponible = !!(cierre && cierre.precio_venta);
+    document.getElementById('btn-mostrar-recupero').style.display = disponible ? 'inline-flex' : 'none';
+    if (!disponible) {
+      document.getElementById('recupero-contenido').style.display = 'none';
+      return;
+    }
+    recuperoRecibido = (parseFloat(cierre.precio_venta) || 0) - (parseFloat(cierre.gastos_cierre_venta) || 0);
+    document.getElementById('recupero-recibido').textContent = fmt(recuperoRecibido);
+
+    const netoPorActor = {};
+    const tipoPorActor = {};
+    movimientos.forEach(function(m) {
+      const monto = parseFloat(m.monto) || 0;
+      const signo = m.tipo_movimiento === 'aporte_proyecto' ? 1 : -1;
+      netoPorActor[m.actor] = (netoPorActor[m.actor] || 0) + signo * monto;
+      tipoPorActor[m.actor] = m.tipo_actor;
+    });
+    recuperoFilas = Object.keys(netoPorActor)
+      .filter(function(actor) { return netoPorActor[actor] > 0.01; })
+      .map(function(actor) { return { actor: actor, tipo_actor: tipoPorActor[actor] || 'propio', monto: netoPorActor[actor] }; });
+  }
+
+  document.getElementById('btn-mostrar-recupero').addEventListener('click', function() {
+    document.getElementById('f-financiamiento').style.display = 'none';
+    document.getElementById('f-editar-financiamiento').style.display = 'none';
+    document.getElementById('recupero-contenido').style.display = 'block';
+    renderRecupero();
+  });
+
+  function renderRecupero() {
+    const cont = document.getElementById('recupero-filas');
+    cont.innerHTML = '';
+    recuperoFilas.forEach(function(f, i) {
+      const row = document.createElement('div');
+      row.className = 'socio-row';
+      row.innerHTML =
+        '<input type="text" value="' + (f.actor || '') + '" data-i="' + i + '" data-f="actor" placeholder="Nombre">' +
+        '<input type="number" value="' + f.monto + '" data-i="' + i + '" data-f="monto" step="0.01">' +
+        '<button type="button" class="rm" data-i="' + i + '">×</button>';
+      cont.appendChild(row);
+    });
+    cont.querySelectorAll('input').forEach(function(inp) {
+      inp.addEventListener('input', function() {
+        const i = parseInt(inp.dataset.i), f = inp.dataset.f;
+        recuperoFilas[i][f] = f === 'monto' ? (parseFloat(inp.value) || 0) : inp.value;
+        actualizarTotalRecupero();
+      });
+    });
+    cont.querySelectorAll('.rm').forEach(function(btn) {
+      btn.addEventListener('click', function() { recuperoFilas.splice(parseInt(btn.dataset.i), 1); renderRecupero(); });
+    });
+    actualizarTotalRecupero();
+  }
+
+  function actualizarTotalRecupero() {
+    const total = recuperoFilas.reduce(function(a, f) { return a + (parseFloat(f.monto) || 0); }, 0);
+    const el = document.getElementById('recupero-total');
+    el.textContent = 'Asignado: ' + fmt(total) + ' de ' + fmt(recuperoRecibido);
+    el.className = 'pct-total' + (Math.abs(total - recuperoRecibido) > 0.5 ? ' err' : '');
+  }
+
+  document.getElementById('btn-add-recupero').addEventListener('click', function() {
+    recuperoFilas.push({ actor: '', tipo_actor: 'propio', monto: 0 });
+    renderRecupero();
+  });
+
+  document.getElementById('btn-guardar-recupero').addEventListener('click', function() {
+    const msg = document.getElementById('msg-recupero');
+    const total = recuperoFilas.reduce(function(a, f) { return a + (parseFloat(f.monto) || 0); }, 0);
+    if (Math.abs(total - recuperoRecibido) > 0.5) {
+      msg.textContent = 'El recupero tiene que sumar exactamente lo recibido (' + fmt(recuperoRecibido) + ').';
+      msg.className = 'err';
+      return;
+    }
+    const hoy = new Date().toISOString().split('T')[0];
+    Promise.all(recuperoFilas.map(function(f) {
+      return postFila({ sheet: 'Movimientos', fields: {
+        mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 4),
+        actor: f.actor, tipo_actor: f.tipo_actor, id_proyecto: idProyecto, tipo_movimiento: 'devolucion_proyecto',
+        monto: f.monto, fecha: hoy, tasa_anual: '', penalidad_prepago: '', retorno_pactado: '', nota: 'Recupero al vender'
+      }});
+    })).then(function(resultados) {
+      const fallo = resultados.find(function(r) { return !r.ok; });
+      if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
+      volverAlPanelConMensaje(msg, 'Recupero guardado. Volviendo al panel…');
+    }).catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
   });
 
   let formModoActual = 'aporte_proyecto';
