@@ -82,21 +82,21 @@
       const cont = document.getElementById('lista-proyectos');
       if (!d.proyectos_activos.length) {
         cont.innerHTML = '<p class="sub" style="margin:0">No hay proyectos activos todavía.</p>';
-        return;
+      } else {
+        cont.innerHTML = '';
+        d.proyectos_activos.forEach(function(p) {
+          const a = document.createElement('a');
+          a.className = 'proyecto-card';
+          a.href = 'proyecto-editar.html?id=' + encodeURIComponent(p.id);
+          a.innerHTML =
+            '<div class="fila">' +
+              '<div><div class="nombre">' + (p.nombre || p.id) + '</div>' +
+              '<div class="meta">' + (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ') + '</div></div>' +
+              '<div class="fila"><div class="monto">' + fmt(p.valor_estimado) + '</div><span class="arrow">›</span></div>' +
+            '</div>';
+          cont.appendChild(a);
+        });
       }
-      cont.innerHTML = '';
-      d.proyectos_activos.forEach(function(p) {
-        const a = document.createElement('a');
-        a.className = 'proyecto-card';
-        a.href = 'proyecto-editar.html?id=' + encodeURIComponent(p.id);
-        a.innerHTML =
-          '<div class="fila">' +
-            '<div><div class="nombre">' + (p.nombre || p.id) + '</div>' +
-            '<div class="meta">' + (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ') + '</div></div>' +
-            '<div class="fila"><div class="monto">' + fmt(p.valor_estimado) + '</div><span class="arrow">›</span></div>' +
-          '</div>';
-        cont.appendChild(a);
-      });
 
       const vendidos = d.proyectos_vendidos || [];
       if (vendidos.length) {
