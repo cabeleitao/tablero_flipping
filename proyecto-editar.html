@@ -83,35 +83,40 @@
   </div>
 
   <div class="section" id="tab-financiamiento">
-    <div id="hist-financiamiento"><p class="sub" style="margin:0">Sin fuentes cargadas todavía.</p></div>
+    <div id="hist-financiamiento"><p class="sub" style="margin:0">Sin movimientos cargados todavía.</p></div>
     <p class="sub" id="resumen-financiamiento" style="margin:10px 0 0"></p>
-    <button type="button" class="btn secondary" id="btn-mostrar-refi" style="margin-top:14px">+ Agregar / refinanciar</button>
+    <div class="actions" style="margin-top:14px">
+      <button type="button" class="btn secondary" id="btn-mostrar-aporte">+ Agregar aporte</button>
+      <button type="button" class="btn secondary" id="btn-mostrar-devolucion">+ Agregar devolución</button>
+    </div>
 
     <form id="f-editar-financiamiento" style="display:none;margin-top:18px">
-      <p class="sub" style="margin:0 0 6px">Editando fuente existente</p>
-      <label for="ed_tipo_fuente">Tipo de fuente</label>
-      <select id="ed_tipo_fuente">
+      <p class="sub" style="margin:0 0 6px">Editando movimiento existente</p>
+      <label for="ed_tipo_movimiento">Tipo de movimiento</label>
+      <select id="ed_tipo_movimiento">
+        <option value="aporte_proyecto">Aporte al proyecto</option>
+        <option value="devolucion_proyecto">Devolución desde el proyecto</option>
+      </select>
+      <label for="ed_tipo_actor">Tipo de actor</label>
+      <select id="ed_tipo_actor">
         <option value="propio">Capital propio</option>
         <option value="prestamo">Préstamo de terceros</option>
         <option value="inversor">Inversor</option>
       </select>
-      <label for="ed_destino">Destino</label>
-      <select id="ed_destino">
-        <option value="compra">Compra</option>
-        <option value="remodelacion">Remodelación</option>
-      </select>
-      <label for="ed_nombre">Nombre (socio, prestamista o inversor)</label>
-      <input type="text" id="ed_nombre">
+      <label for="ed_actor">Actor (socio, prestamista o inversor)</label>
+      <input type="text" id="ed_actor">
       <label for="ed_monto">Monto</label>
       <input type="number" id="ed_monto" step="0.01" min="0">
       <label for="ed_tasa_anual">Tasa anual (%)</label>
       <input type="number" id="ed_tasa_anual" step="0.01" min="0">
-      <label for="ed_fecha_desembolso">Fecha de desembolso</label>
-      <input type="date" id="ed_fecha_desembolso">
+      <label for="ed_fecha">Fecha</label>
+      <input type="date" id="ed_fecha">
       <label for="ed_penalidad_prepago">Penalidad por cancelación anticipada</label>
       <input type="text" id="ed_penalidad_prepago">
       <label for="ed_retorno_pactado">Retorno pactado</label>
       <input type="text" id="ed_retorno_pactado">
+      <label for="ed_nota">Nota</label>
+      <input type="text" id="ed_nota">
       <div style="display:flex;gap:10px;margin-top:10px">
         <button type="submit" style="margin-top:0">Guardar cambios</button>
         <button type="button" class="btn secondary" id="btn-cancelar-edicion" style="margin-top:0">Cancelar</button>
@@ -120,21 +125,18 @@
     </form>
 
     <form id="f-financiamiento" style="display:none;margin-top:18px">
-      <label for="tipo_fuente">Tipo de fuente</label>
+      <p class="sub" id="titulo-form-financiamiento" style="margin:0 0 6px">Nuevo aporte</p>
+      <input type="hidden" id="tipo_movimiento_nuevo" value="aporte_proyecto">
+
+      <label for="tipo_fuente">Tipo de actor</label>
       <select id="tipo_fuente">
         <option value="propio">Capital propio</option>
         <option value="prestamo">Préstamo de terceros</option>
         <option value="inversor">Inversor</option>
       </select>
 
-      <label for="destino">Destino</label>
-      <select id="destino">
-        <option value="compra">Compra</option>
-        <option value="remodelacion">Remodelación</option>
-      </select>
-
       <div id="fecha-monto-propio">
-        <label for="monto_propio_total">Monto total aportado</label>
+        <label for="monto_propio_total">Monto total</label>
         <input type="number" id="monto_propio_total" step="0.01" min="0">
         <label for="fecha_desembolso_propio">Fecha</label>
         <input type="date" id="fecha_desembolso_propio">
@@ -151,7 +153,7 @@
         <input type="number" id="monto_fin" step="0.01" min="0">
         <label for="tasa_anual">Tasa anual (%)</label>
         <input type="number" id="tasa_anual" step="0.01" min="0">
-        <label for="fecha_desembolso">Fecha de desembolso</label>
+        <label for="fecha_desembolso">Fecha</label>
         <input type="date" id="fecha_desembolso">
         <label for="penalidad_prepago">Penalidad por cancelación anticipada</label>
         <input type="text" id="penalidad_prepago" placeholder="ej: 1 año, 2% del saldo">
@@ -159,7 +161,7 @@
         <input type="text" id="retorno_pactado" placeholder="ej: 14% anual">
       </div>
 
-      <button type="submit" id="btn-financiamiento">Guardar fuente</button>
+      <button type="submit" id="btn-financiamiento">Guardar</button>
       <div id="msg-financiamiento"></div>
     </form>
   </div>
@@ -174,15 +176,17 @@
       <input type="number" id="gastos_cierre_venta" step="0.01" min="0">
       <label for="fecha_cancelacion_prestamo">Fecha de cancelación del préstamo</label>
       <input type="date" id="fecha_cancelacion_prestamo">
-      <p class="sub" style="margin:6px 0 0">Completá esta pestaña recién cuando el proyecto se vende de verdad — no es una estimación.</p>
+      <p class="sub" style="margin:6px 0 0">Completá esta pestaña recién cuando el proyecto se vende de verdad — no es una estimación. Al cargar el precio de venta, el proyecto pasa solo a "vendido".</p>
       <button type="submit" id="btn-cierre">Guardar cierre</button>
       <div id="msg-cierre"></div>
     </form>
   </div>
+
   </div>
 
   <div class="actions">
     <a class="btn secondary" id="link-gasto" href="#">Cargar gasto de este proyecto</a>
+    <button type="button" class="btn secondary" id="btn-reabrir" style="display:none">Reabrir proyecto</button>
     <button type="button" class="btn danger" id="btn-eliminar">Eliminar proyecto</button>
   </div>
 
@@ -227,22 +231,22 @@
     setTimeout(function() { window.location.href = 'index.html'; }, 700);
   }
 
-  let financiamientoActual = [];
+  let movimientosActual = [];
 
-  function abrirEdicionFinanciamiento(finId) {
-    const f = financiamientoActual.find(function(x) { return x.fin_id === finId; });
-    if (!f) return;
+  function abrirEdicionFinanciamiento(movId) {
+    const m = movimientosActual.find(function(x) { return x.mov_id === movId; });
+    if (!m) return;
     document.getElementById('f-financiamiento').style.display = 'none';
-    document.getElementById('btn-mostrar-refi').style.display = 'inline-flex';
-    document.getElementById('f-editar-financiamiento').dataset.finid = finId;
-    document.getElementById('ed_tipo_fuente').value = f.tipo_fuente || 'propio';
-    document.getElementById('ed_destino').value = f.destino || 'compra';
-    document.getElementById('ed_nombre').value = f.nombre_prestamista_inversor || '';
-    document.getElementById('ed_monto').value = f.monto || '';
-    document.getElementById('ed_tasa_anual').value = f.tasa_anual || '';
-    document.getElementById('ed_fecha_desembolso').value = f.fecha_desembolso ? String(f.fecha_desembolso).split('T')[0] : '';
-    document.getElementById('ed_penalidad_prepago').value = f.penalidad_prepago || '';
-    document.getElementById('ed_retorno_pactado').value = f.retorno_pactado || '';
+    document.getElementById('f-editar-financiamiento').dataset.movid = movId;
+    document.getElementById('ed_tipo_movimiento').value = m.tipo_movimiento || 'aporte_proyecto';
+    document.getElementById('ed_tipo_actor').value = m.tipo_actor || 'propio';
+    document.getElementById('ed_actor').value = m.actor || '';
+    document.getElementById('ed_monto').value = m.monto || '';
+    document.getElementById('ed_tasa_anual').value = m.tasa_anual || '';
+    document.getElementById('ed_fecha').value = m.fecha ? String(m.fecha).split('T')[0] : '';
+    document.getElementById('ed_penalidad_prepago').value = m.penalidad_prepago || '';
+    document.getElementById('ed_retorno_pactado').value = m.retorno_pactado || '';
+    document.getElementById('ed_nota').value = m.nota || '';
     document.getElementById('f-editar-financiamiento').style.display = 'block';
     document.getElementById('f-editar-financiamiento').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
@@ -253,22 +257,23 @@
 
   document.getElementById('f-editar-financiamiento').addEventListener('submit', function(e) {
     e.preventDefault();
-    const finId = this.dataset.finid;
+    const movId = this.dataset.movid;
     const msg = document.getElementById('msg-editar-financiamiento');
     postFila({
       modo: 'actualizar_por_campo',
-      sheet: 'Financiamiento',
-      campo: 'fin_id',
-      valor: finId,
+      sheet: 'Movimientos',
+      campo: 'mov_id',
+      valor: movId,
       fields: {
-        tipo_fuente: document.getElementById('ed_tipo_fuente').value,
-        destino: document.getElementById('ed_destino').value,
-        nombre_prestamista_inversor: document.getElementById('ed_nombre').value,
+        tipo_movimiento: document.getElementById('ed_tipo_movimiento').value,
+        tipo_actor: document.getElementById('ed_tipo_actor').value,
+        actor: document.getElementById('ed_actor').value,
         monto: document.getElementById('ed_monto').value,
         tasa_anual: document.getElementById('ed_tasa_anual').value,
-        fecha_desembolso: document.getElementById('ed_fecha_desembolso').value,
+        fecha: document.getElementById('ed_fecha').value,
         penalidad_prepago: document.getElementById('ed_penalidad_prepago').value,
-        retorno_pactado: document.getElementById('ed_retorno_pactado').value
+        retorno_pactado: document.getElementById('ed_retorno_pactado').value,
+        nota: document.getElementById('ed_nota').value
       }
     }).then(function(data) {
       if (data.ok) { volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…'); }
@@ -295,6 +300,7 @@
         const p = res.data.proyecto;
         document.getElementById('titulo').textContent = p.nombre_direccion || idProyecto;
         document.getElementById('subtitulo').textContent = (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ');
+        document.getElementById('btn-reabrir').style.display = p.estado === 'vendido' ? 'inline-flex' : 'none';
         document.getElementById('nombre_direccion').value = p.nombre_direccion || '';
         document.getElementById('pais').value = p.pais || 'ARG';
         document.getElementById('fecha_compra').value = p.fecha_compra ? p.fecha_compra.split('T')[0] : '';
@@ -319,42 +325,46 @@
         }
 
         const histCont = document.getElementById('hist-financiamiento');
-        const fin = res.data.financiamiento || [];
-        financiamientoActual = fin;
-        if (!fin.length) {
-          histCont.innerHTML = '<p class="sub" style="margin:0">Sin fuentes cargadas todavía.</p>';
+        const mov = res.data.movimientos || [];
+        movimientosActual = mov;
+        if (!mov.length) {
+          histCont.innerHTML = '<p class="sub" style="margin:0">Sin movimientos cargados todavía.</p>';
         } else {
           histCont.innerHTML = '';
-          fin.forEach(function(f) {
+          mov.slice().sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).forEach(function(m) {
+            const esAporte = m.tipo_movimiento === 'aporte_proyecto';
             const row = document.createElement('div');
             row.className = 'hist-row';
             row.innerHTML =
-              '<span><span class="tag">' + f.tipo_fuente + '</span>' + (f.nombre_prestamista_inversor || '') + (f.destino ? ' · ' + f.destino : '') + '</span>' +
-              '<span style="display:flex;align-items:center;gap:10px">' + fmt(f.monto) + (f.tasa_anual ? ' · ' + f.tasa_anual + '%' : '') +
-              (f.fin_id ? ' <button type="button" class="btn ghost editar-fin" data-finid="' + f.fin_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' : '') +
+              '<span><span class="tag" style="background:' + (esAporte ? 'var(--accent-soft)' : '#e6f4ea') + ';color:' + (esAporte ? 'var(--accent)' : 'var(--success)') + '">' +
+                (esAporte ? 'APORTE' : 'DEVOLUCIÓN') + '</span>' + (m.actor || '') + ' · ' + (m.tipo_actor || '') + '</span>' +
+              '<span style="display:flex;align-items:center;gap:10px">' + fmt(m.monto) + (m.tasa_anual ? ' · ' + m.tasa_anual + '%' : '') +
+              (m.mov_id ? ' <button type="button" class="btn ghost editar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' : '') +
               '</span>';
             histCont.appendChild(row);
           });
           histCont.querySelectorAll('.editar-fin').forEach(function(btn) {
-            btn.addEventListener('click', function() { abrirEdicionFinanciamiento(btn.dataset.finid); });
+            btn.addEventListener('click', function() { abrirEdicionFinanciamiento(btn.dataset.movid); });
           });
         }
 
-        const presupuesto = res.data.presupuesto || [];
-        const necesario = presupuesto
-          .filter(function(p) { return p.rubro === 'compra' || p.rubro === 'remodelacion'; })
-          .reduce(function(a, p) { return a + (parseFloat(p.monto_presupuestado) || 0); }, 0);
-        const financiado = fin.reduce(function(a, f) { return a + (parseFloat(f.monto) || 0); }, 0);
+        const financiado = mov.reduce(function(a, m) {
+          return a + (m.tipo_movimiento === 'aporte_proyecto' ? (parseFloat(m.monto) || 0) : -(parseFloat(m.monto) || 0));
+        }, 0);
+        const ejecucionArr = res.data.ejecucion || [];
+        const necesario = ejecucionArr
+          .filter(function(e) { return e.rubro === 'compra' || e.rubro === 'remodelacion'; })
+          .reduce(function(a, e) { return a + (parseFloat(e.monto) || 0); }, 0);
         const resumen = document.getElementById('resumen-financiamiento');
         if (necesario > 0) {
-          resumen.textContent = 'Financiado: ' + fmt(financiado) + ' de ' + fmt(necesario) + ' necesario (compra + remodelación presupuestada)';
+          resumen.textContent = 'Financiado neto: ' + fmt(financiado) + ' de ' + fmt(necesario) + ' necesario (compra + remodelación ejecutadas)';
           resumen.style.color = financiado < necesario ? 'var(--danger)' : 'var(--text-secondary)';
         } else {
           resumen.textContent = '';
         }
 
         document.getElementById('contenido').style.display = 'block';
-        renderResumen(res.data.presupuesto || [], res.data.ejecucion || [], fin);
+        renderResumen(res.data.presupuesto || [], res.data.ejecucion || [], mov, res.data.cierre);
       })
       .catch(function() {
         document.getElementById('titulo').textContent = 'No se pudo conectar';
@@ -363,7 +373,16 @@
 
   function fmt(n) { return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 }); }
 
-  function renderResumen(presupuesto, ejecucion, financiamiento) {
+  // --- Reparto al vender ---
+  document.getElementById('btn-reabrir').addEventListener('click', function() {
+    postFila({ modo: 'actualizar', sheet: 'Proyectos', id_proyecto: idProyecto, fields: { estado: 'en_curso' } })
+      .then(function(data) {
+        if (data.ok) { window.location.href = 'index.html'; }
+        else { alert('Error al reabrir: ' + data.error); }
+      }).catch(function() { alert('No se pudo conectar.'); });
+  });
+
+  function renderResumen(presupuesto, ejecucion, movimientos, cierre) {
     const rubros = [
       { key: 'compra', label: 'Compra' },
       { key: 'remodelacion', label: 'Remodelación' },
@@ -381,17 +400,16 @@
 
     const realPorRubro = {};
     ejecucion.forEach(function(e) { realPorRubro[e.rubro] = (realPorRubro[e.rubro] || 0) + (parseFloat(e.monto) || 0); });
-    const finPorDestino = {};
-    financiamiento.forEach(function(f) { if (f.destino) finPorDestino[f.destino] = (finPorDestino[f.destino] || 0) + (parseFloat(f.monto) || 0); });
+    // El gasto de cierre real viene de la pestaña "Cierre y venta", no de Ejecución.
+    if (cierre && cierre.gastos_cierre_venta) {
+      realPorRubro.cierre_venta = parseFloat(cierre.gastos_cierre_venta) || 0;
+    }
 
     const realCont = document.getElementById('resumen-reales');
     realCont.innerHTML = '';
     rubros.forEach(function(r) {
       const real = realPorRubro[r.key] || 0;
-      const tieneFinanciamiento = r.key !== 'cierre_venta';
-      const financiado = finPorDestino[r.key] || 0;
       const gastos = ejecucion.filter(function(e) { return e.rubro === r.key; });
-      const fuentes = financiamiento.filter(function(f) { return f.destino === r.key; });
 
       const card = document.createElement('div');
       card.className = 'card';
@@ -401,9 +419,7 @@
       card.innerHTML =
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
           '<span style="font-weight:500">' + r.label + '</span>' +
-          '<span style="font-variant-numeric:tabular-nums">' + fmt(real) +
-            (tieneFinanciamiento ? ' <span style="color:' + (financiado < real ? 'var(--danger)' : 'var(--text-secondary)') + ';font-size:12px">· financiado ' + fmt(financiado) + '</span>' : '') +
-          '</span>' +
+          '<span style="font-variant-numeric:tabular-nums">' + fmt(real) + '</span>' +
         '</div>' +
         '<div id="' + idDet + '" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:10px"></div>';
       card.addEventListener('click', function() {
@@ -420,22 +436,38 @@
           } else {
             html += '<p class="sub" style="margin:0 0 6px">Sin gastos cargados todavía.</p>';
           }
-          if (tieneFinanciamiento) {
-            if (fuentes.length) {
-              html += '<p class="sub" style="margin:12px 0 6px">Financiado por</p>';
-              fuentes.forEach(function(f) {
-                html += '<div class="hist-row" style="font-size:12px"><span><span class="tag">' + f.tipo_fuente + '</span>' + (f.nombre_prestamista_inversor || '') + '</span><span>' + fmt(f.monto) + '</span></div>';
-              });
-            } else {
-              html += '<p class="sub" style="margin:12px 0 0">Sin fuentes de financiamiento con este destino todavía.</p>';
-            }
-          }
           det.innerHTML = html;
           det.dataset.cargado = '1';
         }
       });
       realCont.appendChild(card);
     });
+
+    const totalReal = rubros.reduce(function(a, r) { return a + (realPorRubro[r.key] || 0); }, 0);
+    const desvioPct = totalEstimado > 0 ? ((totalReal - totalEstimado) / totalEstimado * 100) : 0;
+    const totalCard = document.createElement('div');
+    totalCard.className = 'card';
+    totalCard.style.background = 'var(--surface-1, var(--surface))';
+    totalCard.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;font-weight:600">' +
+        '<span>Total real</span>' +
+        '<span style="font-variant-numeric:tabular-nums">' + fmt(totalReal) +
+          ' <span style="font-weight:400;font-size:12px;color:' + (totalReal > totalEstimado ? 'var(--danger)' : 'var(--text-secondary)') + '">' +
+          '(' + (desvioPct >= 0 ? '+' : '') + desvioPct.toFixed(1) + '% vs. estimado ' + fmt(totalEstimado) + ')</span>' +
+        '</span>' +
+      '</div>';
+    realCont.appendChild(totalCard);
+
+    if (cierre && cierre.precio_venta) {
+      const precioVenta = parseFloat(cierre.precio_venta) || 0;
+      const ganancia = precioVenta - totalReal;
+      const gananciaCard = document.createElement('div');
+      gananciaCard.className = 'card';
+      gananciaCard.innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:center"><span>Precio de venta real</span><span style="font-variant-numeric:tabular-nums">' + fmt(precioVenta) + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-weight:600"><span>Ganancia bruta</span><span style="font-variant-numeric:tabular-nums;color:' + (ganancia >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmt(ganancia) + '</span></div>';
+      realCont.appendChild(gananciaCard);
+    }
   }
 
   // --- Guardar datos del proyecto ---
@@ -502,26 +534,63 @@
     const btn = document.getElementById('btn-cierre');
     const msg = document.getElementById('msg-cierre');
     btn.disabled = true;
-    postFila({
+    const precioVenta = document.getElementById('precio_venta').value;
+
+    const guardarCierre = postFila({
       modo: 'actualizar',
       sheet: 'Cierre_venta',
       id_proyecto: idProyecto,
       fields: {
         fecha_venta: document.getElementById('fecha_venta').value,
-        precio_venta: document.getElementById('precio_venta').value,
+        precio_venta: precioVenta,
         gastos_cierre_venta: document.getElementById('gastos_cierre_venta').value,
         fecha_cancelacion_prestamo: document.getElementById('fecha_cancelacion_prestamo').value
       }
-    }).then(function(data) {
+    });
+
+    const acciones = [guardarCierre];
+    if (precioVenta) {
+      acciones.push(postFila({
+        modo: 'actualizar',
+        sheet: 'Proyectos',
+        id_proyecto: idProyecto,
+        fields: { estado: 'vendido' }
+      }));
+    }
+
+    Promise.all(acciones).then(function(resultados) {
       btn.disabled = false;
-      if (data.ok) { volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…'); }
-      else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+      const fallo = resultados.find(function(r) { return !r.ok; });
+      if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
+      const texto = precioVenta ? 'Guardado. Proyecto marcado como vendido. Volviendo al panel…' : 'Guardado. Volviendo al panel…';
+      volverAlPanelConMensaje(msg, texto);
     }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
   });
-  document.getElementById('btn-mostrar-refi').addEventListener('click', function() {
-    document.getElementById('f-financiamiento').style.display = 'block';
-    this.style.display = 'none';
+  document.getElementById('btn-mostrar-aporte').addEventListener('click', function() {
+    abrirFormFinanciamiento('aporte_proyecto', 'Nuevo aporte');
   });
+  document.getElementById('btn-mostrar-devolucion').addEventListener('click', function() {
+    abrirFormFinanciamiento('devolucion_proyecto', 'Nueva devolución');
+  });
+
+  let formModoActual = 'aporte_proyecto';
+
+  function abrirFormFinanciamiento(modo, titulo) {
+    formModoActual = modo;
+    document.getElementById('tipo_movimiento_nuevo').value = modo;
+    document.getElementById('titulo-form-financiamiento').textContent = titulo;
+    document.getElementById('f-editar-financiamiento').style.display = 'none';
+    document.getElementById('f-financiamiento').style.display = 'block';
+    actualizarCamposFinanciamiento();
+    document.getElementById('f-financiamiento').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function actualizarCamposFinanciamiento() {
+    const esPropio = document.getElementById('tipo_fuente').value === 'propio';
+    const esAporte = formModoActual === 'aporte_proyecto';
+    document.getElementById('fecha-monto-propio').style.display = (esPropio && esAporte) ? 'block' : 'none';
+    document.getElementById('campos-terceros').style.display = (esPropio && esAporte) ? 'none' : 'block';
+  }
 
   let socios = [{ nombre: 'Fede', pct: 50 }, { nombre: 'Cabe', pct: 50 }];
 
@@ -559,69 +628,55 @@
   document.getElementById('btn-add-socio').addEventListener('click', function() { socios.push({ nombre: '', pct: 0 }); renderSocios(); });
   renderSocios();
 
-  document.getElementById('tipo_fuente').addEventListener('change', function() {
-    const esPropio = this.value === 'propio';
-    document.getElementById('fecha-monto-propio').style.display = esPropio ? 'block' : 'none';
-    document.getElementById('campos-terceros').style.display = esPropio ? 'none' : 'block';
-  });
+  document.getElementById('tipo_fuente').addEventListener('change', actualizarCamposFinanciamiento);
 
   document.getElementById('f-financiamiento').addEventListener('submit', function(e) {
     e.preventDefault();
     const btn = document.getElementById('btn-financiamiento');
     const msg = document.getElementById('msg-financiamiento');
     const tipo = document.getElementById('tipo_fuente').value;
-    const destino = document.getElementById('destino').value;
+    const esAportePropioConSocios = tipo === 'propio' && formModoActual === 'aporte_proyecto';
     msg.textContent = '';
 
-    function registrarGastoSiCompra(montoTotal, fecha) {
-      if (destino !== 'compra' || !montoTotal) return Promise.resolve({ ok: true });
-      return postFila({ sheet: 'Ejecucion', fields: {
-        id_proyecto: idProyecto, fecha: fecha, rubro: 'compra', sub_rubro: '',
-        monto: montoTotal, proveedor_gc: '', comprobante_nota: 'Generado automáticamente desde financiamiento de compra'
-      }});
-    }
-
-    if (tipo === 'propio') {
+    if (esAportePropioConSocios) {
       const total = socios.reduce(function(a, s) { return a + (parseFloat(s.pct) || 0); }, 0);
       if (Math.abs(total - 100) > 0.5) { msg.textContent = 'El reparto entre socios tiene que sumar 100%.'; msg.className = 'err'; return; }
       const montoTotal = parseFloat(document.getElementById('monto_propio_total').value) || 0;
       const fecha = document.getElementById('fecha_desembolso_propio').value;
       btn.disabled = true;
       Promise.all(socios.map(function(s) {
-        return postFila({ sheet: 'Financiamiento', fields: {
-          id_proyecto: idProyecto, tipo_fuente: 'propio', nombre_prestamista_inversor: s.nombre,
+        return postFila({ sheet: 'Movimientos', fields: {
+          mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          actor: s.nombre, tipo_actor: 'propio', id_proyecto: idProyecto, tipo_movimiento: formModoActual,
           monto: (montoTotal * (parseFloat(s.pct) || 0) / 100).toFixed(2),
-          tasa_anual: '', fecha_desembolso: fecha, penalidad_prepago: '', retorno_pactado: '', destino: destino,
-          fin_id: 'f-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+          fecha: fecha, tasa_anual: '', penalidad_prepago: '', retorno_pactado: '', nota: ''
         }});
       })).then(function(resultados) {
         const fallo = resultados.find(function(r) { return !r.ok; });
-        if (fallo) { btn.disabled = false; msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
-        return registrarGastoSiCompra(montoTotal, fecha).then(function() {
-          btn.disabled = false;
-          volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…');
-        });
+        btn.disabled = false;
+        if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
+        volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…');
       }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     } else {
       btn.disabled = true;
       const monto = document.getElementById('monto_fin').value;
       const fecha = document.getElementById('fecha_desembolso').value;
-      postFila({ sheet: 'Financiamiento', fields: {
-        id_proyecto: idProyecto, tipo_fuente: tipo,
-        nombre_prestamista_inversor: document.getElementById('nombre_prestamista_inversor').value,
+      postFila({ sheet: 'Movimientos', fields: {
+        mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        actor: document.getElementById('nombre_prestamista_inversor').value,
+        tipo_actor: tipo,
+        id_proyecto: idProyecto,
+        tipo_movimiento: formModoActual,
         monto: monto,
+        fecha: fecha,
         tasa_anual: document.getElementById('tasa_anual').value,
-        fecha_desembolso: fecha,
         penalidad_prepago: document.getElementById('penalidad_prepago').value,
         retorno_pactado: document.getElementById('retorno_pactado').value,
-        destino: destino,
-        fin_id: 'f-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+        nota: ''
       }}).then(function(data) {
-        if (!data.ok) { btn.disabled = false; msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }
-        return registrarGastoSiCompra(parseFloat(monto) || 0, fecha).then(function() {
-          btn.disabled = false;
-          volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…');
-        });
+        btn.disabled = false;
+        if (!data.ok) { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }
+        volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…');
       }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     }
   });

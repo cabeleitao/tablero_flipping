@@ -73,13 +73,7 @@
       <option value="prestamo">Préstamo de terceros</option>
       <option value="inversor">Inversor</option>
     </select>
-
-    <label for="destino">Destino</label>
-    <select id="destino">
-      <option value="compra">Compra</option>
-      <option value="remodelacion">Remodelación</option>
-    </select>
-    <p class="sub" style="margin:6px 0 0">Recordá que, sumando todas las fuentes de un proyecto, el total financiado tiene que cubrir compra + remodelación presupuestada.</p>
+    <p class="sub" style="margin:6px 0 0">Esto es un aporte al proyecto. Devoluciones y refinanciamientos se cargan después, desde la página del proyecto.</p>
 
     <div id="fecha-monto-propio">
       <label for="monto_propio_total">Monto total aportado</label>
@@ -298,21 +292,7 @@
 
     } else if (activeTab === 'financiamiento') {
       const tipo = document.getElementById('tipo_fuente').value;
-      const destino = document.getElementById('destino').value;
       const idProyecto = document.getElementById('proyecto_fin').value;
-
-      function registrarGastoSiCompra(montoTotal, fecha) {
-        if (destino !== 'compra' || !montoTotal) return Promise.resolve({ ok: true });
-        return postFila('Ejecucion', {
-          id_proyecto: idProyecto,
-          fecha: fecha,
-          rubro: 'compra',
-          sub_rubro: '',
-          monto: montoTotal,
-          proveedor_gc: '',
-          comprobante_nota: 'Generado automáticamente desde financiamiento de compra'
-        });
-      }
 
       if (tipo === 'propio') {
         const total = socios.reduce(function(acc, s) { return acc + (parseFloat(s.pct) || 0); }, 0);
@@ -326,27 +306,26 @@
         btn.disabled = true;
 
         const envios = socios.map(function(s) {
-          return postFila('Financiamiento', {
+          return postFila('Movimientos', {
+            mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            actor: s.nombre,
+            tipo_actor: 'propio',
             id_proyecto: idProyecto,
-            tipo_fuente: 'propio',
-            nombre_prestamista_inversor: s.nombre,
+            tipo_movimiento: 'aporte_proyecto',
             monto: (montoTotal * (parseFloat(s.pct) || 0) / 100).toFixed(2),
+            fecha: fecha,
             tasa_anual: '',
-            fecha_desembolso: fecha,
             penalidad_prepago: '',
             retorno_pactado: '',
-            destino: destino,
-            fin_id: 'f-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+            nota: ''
           });
         });
 
         Promise.all(envios).then(function(resultados) {
           const fallo = resultados.find(function(r) { return !r.ok; });
-          if (fallo) { btn.disabled = false; msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
-          return registrarGastoSiCompra(montoTotal, fecha).then(function() {
-            btn.disabled = false;
-            volverAlPanel(msg, 'Guardado (' + socios.length + ' socios). Volviendo al panel…');
-          });
+          btn.disabled = false;
+          if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
+          volverAlPanel(msg, 'Guardado (' + socios.length + ' socios). Volviendo al panel…');
         }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
 
       } else {
@@ -354,23 +333,22 @@
         const monto = document.getElementById('monto_fin').value;
         const fecha = document.getElementById('fecha_desembolso').value;
         const fields = {
+          mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          actor: document.getElementById('nombre_prestamista_inversor').value,
+          tipo_actor: tipo,
           id_proyecto: idProyecto,
-          tipo_fuente: tipo,
-          nombre_prestamista_inversor: document.getElementById('nombre_prestamista_inversor').value,
+          tipo_movimiento: 'aporte_proyecto',
           monto: monto,
+          fecha: fecha,
           tasa_anual: document.getElementById('tasa_anual').value,
-          fecha_desembolso: fecha,
           penalidad_prepago: document.getElementById('penalidad_prepago').value,
           retorno_pactado: document.getElementById('retorno_pactado').value,
-          destino: destino,
-          fin_id: 'f-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+          nota: ''
         };
-        postFila('Financiamiento', fields).then(function(data) {
-          if (!data.ok) { btn.disabled = false; msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }
-          return registrarGastoSiCompra(parseFloat(monto) || 0, fecha).then(function() {
-            btn.disabled = false;
-            volverAlPanel(msg, 'Guardado. Volviendo al panel…');
-          });
+        postFila('Movimientos', fields).then(function(data) {
+          btn.disabled = false;
+          if (!data.ok) { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }
+          volverAlPanel(msg, 'Guardado. Volviendo al panel…');
         }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
       }
 

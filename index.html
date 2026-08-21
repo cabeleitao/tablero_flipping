@@ -28,8 +28,43 @@
     <div id="lista-proyectos"><p class="sub" style="margin:0">Cargando…</p></div>
   </div>
 
+  <div class="card" id="card-cuentas">
+    <h2>Cuenta corriente por actor</h2>
+    <div id="cuadro-cuentas"><p class="sub" style="margin:0">Cargando…</p></div>
+  </div>
+
+  <div class="card" id="card-financiero">
+    <h2>Financiamiento activo por proyecto</h2>
+    <div id="cuadro-financiero"><p class="sub" style="margin:0">Cargando…</p></div>
+  </div>
+
+  <div class="card" id="card-vendidos" style="display:none">
+    <h2>Proyectos vendidos</h2>
+    <div id="lista-vendidos"></div>
+  </div>
+
   <div class="actions">
     <a class="btn" href="proyecto.html">+ Nuevo proyecto</a>
+    <button type="button" class="btn secondary" id="btn-mostrar-movimiento">+ Aporte / retiro de cuenta</button>
+  </div>
+
+  <div class="card" id="card-movimiento" style="display:none;margin-top:16px">
+    <p class="sub" style="margin:0 0 8px;text-transform:uppercase;letter-spacing:0.04em;font-weight:600">Registrar movimiento de cuenta</p>
+    <label for="mov-actor">Actor</label>
+    <input type="text" id="mov-actor" placeholder="Nombre del socio, inversor o banco">
+    <label for="mov-tipo">Tipo de movimiento</label>
+    <select id="mov-tipo">
+      <option value="aporte_externo">Aporte externo (entra plata)</option>
+      <option value="retiro">Retiro (sale plata del sistema)</option>
+    </select>
+    <label for="mov-monto">Monto</label>
+    <input type="number" id="mov-monto" step="0.01" min="0">
+    <label for="mov-fecha">Fecha</label>
+    <input type="date" id="mov-fecha">
+    <label for="mov-nota">Nota</label>
+    <input type="text" id="mov-nota">
+    <button type="button" id="btn-guardar-movimiento" style="width:100%;margin-top:20px;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;cursor:pointer;font-weight:600">Guardar</button>
+    <div id="msg-movimiento"></div>
   </div>
 </div>
 
@@ -85,6 +120,45 @@
           '</div>';
         cont.appendChild(a);
       });
+
+      const finCont = document.getElementById('cuadro-financiero');
+      const detalle = d.financiamiento_detalle || [];
+      if (!detalle.length) {
+        finCont.innerHTML = '<p class="sub" style="margin:0">Sin financiamiento activo todavía.</p>';
+      } else {
+        finCont.innerHTML = detalle.map(function(f) {
+          return '<div class="hist-row"><span>' + f.proyecto + ' · ' + f.tipo_fuente + (f.nombre ? ' (' + f.nombre + ')' : '') + '</span><span>' + fmt(f.monto) + '</span></div>';
+        }).join('');
+      }
+
+      const cuentasCont = document.getElementById('cuadro-cuentas');
+      const actores = d.actores_resumen || [];
+      if (!actores.length) {
+        cuentasCont.innerHTML = '<p class="sub" style="margin:0">Sin movimientos todavía.</p>';
+      } else {
+        cuentasCont.innerHTML = actores.map(function(a) {
+          return '<div class="hist-row"><span>' + a.actor + '</span><span style="color:' + (a.saldo < 0 ? 'var(--danger)' : 'var(--text-secondary)') + '">' + fmt(a.saldo) + '</span></div>';
+        }).join('');
+      }
+
+      const vendidos = d.proyectos_vendidos || [];
+      if (vendidos.length) {
+        document.getElementById('card-vendidos').style.display = 'block';
+        const contV = document.getElementById('lista-vendidos');
+        contV.innerHTML = '';
+        vendidos.forEach(function(p) {
+          const a = document.createElement('a');
+          a.className = 'proyecto-card';
+          a.href = 'proyecto-editar.html?id=' + encodeURIComponent(p.id);
+          a.innerHTML =
+            '<div class="fila">' +
+              '<div><div class="nombre">' + (p.nombre || p.id) + '</div>' +
+              '<div class="meta">' + (p.pais || '') + ' · vendido' + (p.fecha_venta ? ' ' + String(p.fecha_venta).split('T')[0] : '') + '</div></div>' +
+              '<div class="fila"><div class="monto" style="color:' + (p.ganancia >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmt(p.ganancia) + '</div><span class="arrow">›</span></div>' +
+            '</div>';
+          contV.appendChild(a);
+        });
+      }
     })
     .catch(function() {
       document.getElementById('lista-proyectos').innerHTML = '<p class="sub" style="margin:0">No se pudo conectar.</p>';
@@ -120,6 +194,46 @@
 
   document.getElementById('btn-cerrar-modal').addEventListener('click', function() {
     document.getElementById('modal-detalle').classList.remove('show');
+  });
+
+  document.getElementById('btn-mostrar-movimiento').addEventListener('click', function() {
+    const card = document.getElementById('card-movimiento');
+    card.style.display = card.style.display === 'none' ? 'block' : 'none';
+    if (!document.getElementById('mov-fecha').value) {
+      document.getElementById('mov-fecha').valueAsDate = new Date();
+    }
+  });
+
+  document.getElementById('btn-guardar-movimiento').addEventListener('click', function() {
+    const msg = document.getElementById('msg-movimiento');
+    const actor = document.getElementById('mov-actor').value.trim();
+    const monto = parseFloat(document.getElementById('mov-monto').value) || 0;
+    if (!actor || !monto) {
+      msg.textContent = 'Completá el actor y el monto.';
+      msg.className = 'err';
+      return;
+    }
+    const fields = {
+      mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      actor: actor,
+      tipo_actor: 'propio',
+      id_proyecto: '',
+      tipo_movimiento: document.getElementById('mov-tipo').value,
+      monto: monto,
+      fecha: document.getElementById('mov-fecha').value,
+      nota: document.getElementById('mov-nota').value
+    };
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ sheet: 'Movimientos', fields: fields })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) { window.location.reload(); }
+        else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+      })
+      .catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
   });
 </script>
 </body>
