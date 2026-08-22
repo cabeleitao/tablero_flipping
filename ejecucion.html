@@ -89,6 +89,7 @@
     msg.className = '';
 
     const fields = {
+      gasto_id: 'g-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       id_proyecto: document.getElementById('proyecto').value,
       fecha: document.getElementById('fecha').value,
       rubro: document.getElementById('rubro').value,

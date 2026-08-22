@@ -235,6 +235,7 @@
     <p class="sub" id="modal-gastos-atras" style="display:none;cursor:pointer;margin:0 0 8px">← Atrás</p>
     <h3 id="modal-gastos-titulo">Gastos</h3>
     <div id="modal-gastos-lista" style="margin:14px 0"></div>
+    <div id="modal-gastos-form" style="display:none"></div>
     <button type="button" class="btn secondary" id="btn-cerrar-modal-gastos" style="width:100%;justify-content:center">Cerrar</button>
   </div>
 </div>
@@ -442,6 +443,8 @@
   function abrirModalGastos(titulo, filasHtml, mostrarAtras, onAtras) {
     document.getElementById('modal-gastos-titulo').textContent = titulo;
     document.getElementById('modal-gastos-lista').innerHTML = filasHtml;
+    document.getElementById('modal-gastos-lista').style.display = 'block';
+    document.getElementById('modal-gastos-form').style.display = 'none';
     const atras = document.getElementById('modal-gastos-atras');
     atras.style.display = mostrarAtras ? 'block' : 'none';
     atras.onclick = onAtras || null;
@@ -505,9 +508,80 @@
     const filas = gastos.map(function(g) {
       const fecha = g.fecha ? String(g.fecha).split('T')[0] : '';
       const nota = g.comprobante_nota ? ' · ' + g.comprobante_nota : '';
-      return '<div class="hist-row" style="font-size:13px"><span>' + fecha + nota + '</span><span>' + fmt(g.monto) + '</span></div>';
+      return '<div class="hist-row" style="font-size:13px;flex-wrap:wrap"><span>' + fecha + nota + '</span>' +
+        '<span style="display:flex;align-items:center;gap:8px">' + fmt(g.monto) +
+        (g.gasto_id ? ' <button type="button" class="btn ghost editar-gasto" data-gastoid="' + g.gasto_id + '" style="padding:2px 6px;font-size:12px;text-decoration:underline">Editar</button>' : '') +
+        (g.gasto_id ? ' <button type="button" class="btn ghost eliminar-gasto" data-gastoid="' + g.gasto_id + '" style="padding:2px 6px;font-size:12px;text-decoration:underline;color:var(--danger)">Eliminar</button>' : '') +
+        '</span></div>';
     }).join('');
     abrirModalGastos(titulo, filas, mostrarAtras, onAtras);
+
+    document.querySelectorAll('.editar-gasto').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const g = gastos.find(function(x) { return x.gasto_id === btn.dataset.gastoid; });
+        if (g) abrirEdicionGasto(g, titulo, gastos, mostrarAtras, onAtras);
+      });
+    });
+    document.querySelectorAll('.eliminar-gasto').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (!confirm('¿Eliminar este gasto? No se puede deshacer.')) return;
+        postFila({ modo: 'eliminar_fila', sheet: 'Ejecucion', campo: 'gasto_id', valor: btn.dataset.gastoid })
+          .then(function(data) {
+            if (data.ok) { document.getElementById('modal-gastos').classList.remove('show'); cargarDetalle(); }
+            else { alert('Error: ' + data.error); }
+          }).catch(function() { alert('No se pudo conectar.'); });
+      });
+    });
+  }
+
+  function abrirEdicionGasto(g, tituloAnterior, gastos, mostrarAtras, onAtrasAnterior) {
+    document.getElementById('modal-gastos-lista').style.display = 'none';
+    document.getElementById('modal-gastos-atras').style.display = 'block';
+    document.getElementById('modal-gastos-atras').onclick = function() { mostrarDrillDetalle(tituloAnterior, gastos, mostrarAtras, onAtrasAnterior); };
+    document.getElementById('modal-gastos-titulo').textContent = 'Editar gasto';
+
+    const form = document.getElementById('modal-gastos-form');
+    form.style.display = 'block';
+    form.innerHTML =
+      '<label for="ed-gasto-fecha">Fecha</label>' +
+      '<input type="date" id="ed-gasto-fecha" value="' + (g.fecha ? String(g.fecha).split('T')[0] : '') + '">' +
+      '<label for="ed-gasto-rubro">Rubro</label>' +
+      '<select id="ed-gasto-rubro">' +
+        '<option value="compra"' + (g.rubro === 'compra' ? ' selected' : '') + '>Compra</option>' +
+        '<option value="remodelacion"' + (g.rubro === 'remodelacion' ? ' selected' : '') + '>Remodelación</option>' +
+        '<option value="cierre_venta"' + (g.rubro === 'cierre_venta' ? ' selected' : '') + '>Cierre / venta</option>' +
+      '</select>' +
+      '<label for="ed-gasto-sub">Sub-rubro</label>' +
+      '<input type="text" id="ed-gasto-sub" value="' + (g.sub_rubro || '').replace(/"/g, '&quot;') + '">' +
+      '<label for="ed-gasto-monto">Monto</label>' +
+      '<input type="number" id="ed-gasto-monto" step="0.01" min="0" value="' + (g.monto || '') + '">' +
+      '<label for="ed-gasto-prov">Proveedor / GC</label>' +
+      '<input type="text" id="ed-gasto-prov" value="' + (g.proveedor_gc || '').replace(/"/g, '&quot;') + '">' +
+      '<label for="ed-gasto-nota">Comprobante o nota</label>' +
+      '<input type="text" id="ed-gasto-nota" value="' + (g.comprobante_nota || '').replace(/"/g, '&quot;') + '">' +
+      '<button type="button" id="btn-guardar-gasto" style="width:100%;margin-top:16px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer;font-weight:600">Guardar cambios</button>' +
+      '<div id="msg-editar-gasto" style="margin-top:8px;font-size:13px"></div>';
+
+    document.getElementById('btn-guardar-gasto').addEventListener('click', function() {
+      const msg = document.getElementById('msg-editar-gasto');
+      postFila({
+        modo: 'actualizar_por_campo',
+        sheet: 'Ejecucion',
+        campo: 'gasto_id',
+        valor: g.gasto_id,
+        fields: {
+          fecha: document.getElementById('ed-gasto-fecha').value,
+          rubro: document.getElementById('ed-gasto-rubro').value,
+          sub_rubro: document.getElementById('ed-gasto-sub').value,
+          monto: document.getElementById('ed-gasto-monto').value,
+          proveedor_gc: document.getElementById('ed-gasto-prov').value,
+          comprobante_nota: document.getElementById('ed-gasto-nota').value
+        }
+      }).then(function(data) {
+        if (data.ok) { document.getElementById('modal-gastos').classList.remove('show'); cargarDetalle(); }
+        else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+      }).catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+    });
   }
 
   // --- Reparto al vender ---
