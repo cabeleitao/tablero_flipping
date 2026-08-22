@@ -196,6 +196,7 @@
 
   <div class="actions">
     <a class="btn secondary" id="link-gasto" href="#">Cargar gasto de este proyecto</a>
+    <p class="sub" id="nota-vendido" style="display:none;margin:0;align-self:center">Reabrí el proyecto para registrar un gasto nuevo.</p>
     <button type="button" class="btn secondary" id="btn-reabrir" style="display:none">Reabrir proyecto</button>
     <button type="button" class="btn danger" id="btn-eliminar">Eliminar proyecto</button>
   </div>
@@ -311,6 +312,8 @@
         document.getElementById('titulo').textContent = p.nombre_direccion || idProyecto;
         document.getElementById('subtitulo').textContent = (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ');
         document.getElementById('btn-reabrir').style.display = p.estado === 'vendido' ? 'inline-flex' : 'none';
+        document.getElementById('link-gasto').style.display = p.estado === 'vendido' ? 'none' : 'inline-flex';
+        document.getElementById('nota-vendido').style.display = p.estado === 'vendido' ? 'block' : 'none';
         document.getElementById('nombre_direccion').value = p.nombre_direccion || '';
         document.getElementById('pais').value = p.pais || 'ARG';
         document.getElementById('fecha_compra').value = p.fecha_compra ? p.fecha_compra.split('T')[0] : '';
@@ -366,7 +369,10 @@
           .filter(function(e) { return e.rubro === 'compra' || e.rubro === 'remodelacion'; })
           .reduce(function(a, e) { return a + (parseFloat(e.monto) || 0); }, 0);
         const resumen = document.getElementById('resumen-financiamiento');
-        if (necesario > 0) {
+        if (p.estado === 'vendido') {
+          resumen.textContent = 'Proyecto vendido — usá "Registrar recupero" para devolverle a cada actor lo que le corresponde.';
+          resumen.style.color = 'var(--text-secondary)';
+        } else if (necesario > 0) {
           resumen.textContent = 'Financiado neto: ' + fmt(financiado) + ' de ' + fmt(necesario) + ' necesario (compra + remodelación ejecutadas)';
           resumen.style.color = financiado < necesario ? 'var(--danger)' : 'var(--text-secondary)';
         } else {
