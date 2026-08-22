@@ -183,7 +183,10 @@
         <input type="text" id="retorno_pactado" placeholder="ej: 14% anual">
       </div>
 
-      <button type="submit" id="btn-financiamiento">Guardar</button>
+      <div style="display:flex;gap:10px">
+        <button type="submit" id="btn-financiamiento" style="margin-top:0">Guardar</button>
+        <button type="button" class="btn secondary" id="btn-cancelar-financiamiento" style="margin-top:0">Cancelar</button>
+      </div>
       <div id="msg-financiamiento"></div>
     </form>
   </div>
@@ -635,6 +638,11 @@
     abrirFormFinanciamiento('devolucion_proyecto', 'Refinanciar');
   });
 
+  document.getElementById('btn-cancelar-financiamiento').addEventListener('click', function() {
+    document.getElementById('f-financiamiento').style.display = 'none';
+    document.getElementById('msg-financiamiento').textContent = '';
+  });
+
   // --- Recupero (reparto final al vender, precargado por actor) ---
   let recuperoFilas = [];
   let recuperoRecibido = 0;
@@ -783,9 +791,10 @@
       return;
     }
     cont.innerHTML = filas.map(function(f, i) {
-      return '<div class="socio-row">' +
-        '<label style="display:flex;align-items:center;gap:8px;flex:2;margin:0"><input type="checkbox" class="refi-check" data-i="' + i + '"> ' + f.actor + ' (' + f.tipo_actor + ') — invertido ' + fmt(f.monto) + '</label>' +
-        '<input type="number" class="refi-monto" data-i="' + i + '" value="' + f.monto.toFixed(2) + '" step="0.01" style="flex:1">' +
+      return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+        '<input type="checkbox" class="refi-check" data-i="' + i + '" style="flex-shrink:0;width:18px;height:18px">' +
+        '<span style="flex:1;font-size:14px">' + f.actor + ' <span style="color:var(--text-secondary)">(' + f.tipo_actor + ')</span><br><span style="color:var(--text-secondary);font-size:12px">invertido ' + fmt(f.monto) + '</span></span>' +
+        '<input type="number" class="refi-monto" data-i="' + i + '" value="' + f.monto.toFixed(2) + '" step="0.01" style="width:120px;flex-shrink:0">' +
         '</div>';
     }).join('');
     cont.dataset.filas = JSON.stringify(filas);
