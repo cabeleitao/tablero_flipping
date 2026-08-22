@@ -28,11 +28,12 @@
   </div>
 
   <div class="section active" id="tab-resumen">
-    <p class="sub" style="margin:0 0 10px">Totales estimados</p>
+    <p class="sub" style="margin:0 0 10px;text-transform:uppercase;letter-spacing:0.04em;font-weight:600">Totales estimados</p>
     <div id="resumen-estimados" class="card"></div>
 
-    <p class="sub" style="margin:20px 0 10px">Totales reales <span style="color:var(--text-muted)">(tocá cada rubro para ver el detalle)</span></p>
-    <div id="resumen-reales"></div>
+    <p class="sub" style="margin:22px 0 10px;text-transform:uppercase;letter-spacing:0.04em;font-weight:600;color:var(--accent)">✏️ Totales reales <span style="text-transform:none;letter-spacing:normal;font-weight:400;color:var(--text-muted)">(tocá cada rubro para ver o editar el detalle)</span></p>
+    <div id="resumen-reales" class="card"></div>
+    <div id="resumen-ganancia" style="margin-top:10px"></div>
   </div>
 
   <div class="section" id="tab-datos">
@@ -210,8 +211,6 @@
   </div>
 
   <div class="actions">
-    <a class="btn" id="link-gasto" href="#">Cargar gasto de este proyecto</a>
-    <p class="sub" id="nota-vendido" style="display:none;margin:0;align-self:center">Reabrí el proyecto para registrar un gasto nuevo.</p>
     <button type="button" class="btn secondary" id="btn-reabrir" style="display:none">Reabrir proyecto</button>
     <button type="button" class="btn danger" id="btn-eliminar">Eliminar proyecto</button>
   </div>
@@ -256,7 +255,6 @@
   if (!idProyecto) {
     document.getElementById('titulo').textContent = 'Falta el id del proyecto';
   } else {
-    document.getElementById('link-gasto').href = 'ejecucion.html?id=' + encodeURIComponent(idProyecto);
     cargarActoresGlobal().then(cargarDetalle);
   }
 
@@ -345,8 +343,6 @@
         document.getElementById('titulo').textContent = p.nombre_direccion || idProyecto;
         document.getElementById('subtitulo').textContent = (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ');
         document.getElementById('btn-reabrir').style.display = p.estado === 'vendido' ? 'inline-flex' : 'none';
-        document.getElementById('link-gasto').style.display = p.estado === 'vendido' ? 'none' : 'inline-flex';
-        document.getElementById('nota-vendido').style.display = p.estado === 'vendido' ? 'block' : 'none';
         document.getElementById('nombre_direccion').value = p.nombre_direccion || '';
         document.getElementById('pais').value = p.pais || 'ARG';
         document.getElementById('fecha_compra').value = p.fecha_compra ? p.fecha_compra.split('T')[0] : '';
@@ -617,45 +613,31 @@
     }
 
     const realCont = document.getElementById('resumen-reales');
-    realCont.innerHTML = '';
-    rubros.forEach(function(r) {
+    realCont.innerHTML = rubros.map(function(r) {
       const real = realPorRubro[r.key] || 0;
-      const gastos = ejecucion.filter(function(e) { return e.rubro === r.key; });
+      return '<div class="hist-row real-rubro" data-rubro="' + r.key + '" style="cursor:pointer"><span>' + r.label + '</span><span>' + fmt(real) + '</span></div>';
+    }).join('');
 
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.style.cursor = 'pointer';
-      card.style.marginBottom = '10px';
-      card.innerHTML =
-        '<div style="display:flex;justify-content:space-between;align-items:center">' +
-          '<span style="font-weight:500">' + r.label + '</span>' +
-          '<span style="font-variant-numeric:tabular-nums">' + fmt(real) + '</span>' +
-        '</div>';
-      card.addEventListener('click', function() {
+    const totalReal = rubros.reduce(function(a, r) { return a + (realPorRubro[r.key] || 0); }, 0);
+    const desvioPct = totalEstimado > 0 ? ((totalReal - totalEstimado) / totalEstimado * 100) : 0;
+    realCont.innerHTML += '<div class="hist-row" style="font-weight:600;border-bottom:none"><span>Total</span><span>' + fmt(totalReal) +
+      ' <span style="font-weight:400;font-size:12px;color:' + (totalReal > totalEstimado ? 'var(--danger)' : 'var(--text-secondary)') + '">' +
+      '(' + (desvioPct >= 0 ? '+' : '') + desvioPct.toFixed(1) + '% vs. estimado ' + fmt(totalEstimado) + ')</span></span></div>';
+
+    realCont.querySelectorAll('.real-rubro').forEach(function(el) {
+      el.addEventListener('click', function() {
+        const r = rubros.find(function(x) { return x.key === el.dataset.rubro; });
+        const gastos = ejecucion.filter(function(e) { return e.rubro === r.key; });
         if (!gastos.length) {
           abrirModalGastos(r.label, '<p class="sub" style="margin:0">Sin gastos cargados todavía.</p>', false, null);
           return;
         }
         mostrarDrillRubro(r.key, r.label, gastos);
       });
-      realCont.appendChild(card);
     });
 
-    const totalReal = rubros.reduce(function(a, r) { return a + (realPorRubro[r.key] || 0); }, 0);
-    const desvioPct = totalEstimado > 0 ? ((totalReal - totalEstimado) / totalEstimado * 100) : 0;
-    const totalCard = document.createElement('div');
-    totalCard.className = 'card';
-    totalCard.style.background = 'var(--surface-1, var(--surface))';
-    totalCard.innerHTML =
-      '<div style="display:flex;justify-content:space-between;align-items:center;font-weight:600">' +
-        '<span>Total real</span>' +
-        '<span style="font-variant-numeric:tabular-nums">' + fmt(totalReal) +
-          ' <span style="font-weight:400;font-size:12px;color:' + (totalReal > totalEstimado ? 'var(--danger)' : 'var(--text-secondary)') + '">' +
-          '(' + (desvioPct >= 0 ? '+' : '') + desvioPct.toFixed(1) + '% vs. estimado ' + fmt(totalEstimado) + ')</span>' +
-        '</span>' +
-      '</div>';
-    realCont.appendChild(totalCard);
-
+    const gananciaCont = document.getElementById('resumen-ganancia');
+    gananciaCont.innerHTML = '';
     if (cierre && cierre.precio_venta) {
       const precioVenta = parseFloat(cierre.precio_venta) || 0;
       const gananciaNeta = precioVenta - totalReal;
@@ -682,7 +664,7 @@
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-weight:600"><span>Ganancia neta</span><span style="font-variant-numeric:tabular-nums;color:' + (gananciaNeta >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmt(gananciaNeta) + '</span></div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span>Tasa de retorno</span><span style="font-variant-numeric:tabular-nums">' + tasaRetorno.toFixed(2) + '%' + mesesTexto + '</span></div>' +
         retornoMensualTexto;
-      realCont.appendChild(gananciaCard);
+      gananciaCont.appendChild(gananciaCard);
     }
   }
 
