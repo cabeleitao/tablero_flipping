@@ -230,6 +230,15 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-gastos">
+  <div class="modal" style="max-width:420px">
+    <p class="sub" id="modal-gastos-atras" style="display:none;cursor:pointer;margin:0 0 8px">← Atrás</p>
+    <h3 id="modal-gastos-titulo">Gastos</h3>
+    <div id="modal-gastos-lista" style="margin:14px 0"></div>
+    <button type="button" class="btn secondary" id="btn-cerrar-modal-gastos" style="width:100%;justify-content:center">Cerrar</button>
+  </div>
+</div>
+
 <script>
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
   const params = new URLSearchParams(window.location.search);
@@ -418,6 +427,75 @@
 
   function fmt(n) { return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 }); }
 
+  // --- Modal de gastos con drill-down: rubro > sub-rubro > proveedor > detalle ---
+  function abrirModalGastos(titulo, filasHtml, mostrarAtras, onAtras) {
+    document.getElementById('modal-gastos-titulo').textContent = titulo;
+    document.getElementById('modal-gastos-lista').innerHTML = filasHtml;
+    const atras = document.getElementById('modal-gastos-atras');
+    atras.style.display = mostrarAtras ? 'block' : 'none';
+    atras.onclick = onAtras || null;
+    document.getElementById('modal-gastos').classList.add('show');
+  }
+  document.getElementById('btn-cerrar-modal-gastos').addEventListener('click', function() {
+    document.getElementById('modal-gastos').classList.remove('show');
+  });
+
+  function mostrarDrillRubro(rubroKey, rubroLabel, gastos) {
+    const haySubRubro = gastos.some(function(g) { return g.sub_rubro; });
+    if (!haySubRubro) { mostrarDrillProveedor(rubroLabel, null, gastos, false, null); return; }
+
+    const porSub = {};
+    gastos.forEach(function(g) {
+      const key = g.sub_rubro || '(sin especificar)';
+      porSub[key] = (porSub[key] || 0) + (parseFloat(g.monto) || 0);
+    });
+    const subs = Object.keys(porSub);
+    const filas = subs.map(function(s) {
+      return '<div class="hist-row drill-sub" data-sub="' + s.replace(/"/g, '&quot;') + '" style="cursor:pointer"><span>' + s + '</span><span>' + fmt(porSub[s]) + '</span></div>';
+    }).join('');
+    abrirModalGastos(rubroLabel, filas, false, null);
+    document.querySelectorAll('.drill-sub').forEach(function(el) {
+      el.addEventListener('click', function() {
+        const sub = el.dataset.sub;
+        const filtrados = gastos.filter(function(g) { return (g.sub_rubro || '(sin especificar)') === sub; });
+        mostrarDrillProveedor(rubroLabel, sub, filtrados, true, function() { mostrarDrillRubro(rubroKey, rubroLabel, gastos); });
+      });
+    });
+  }
+
+  function mostrarDrillProveedor(rubroLabel, subRubro, gastos, mostrarAtras, onAtras) {
+    const titulo = subRubro ? (rubroLabel + ' · ' + subRubro) : rubroLabel;
+    const hayProveedor = gastos.some(function(g) { return g.proveedor_gc; });
+    if (!hayProveedor) { mostrarDrillDetalle(titulo, gastos, mostrarAtras, onAtras); return; }
+
+    const porProv = {};
+    gastos.forEach(function(g) {
+      const key = g.proveedor_gc || '(sin proveedor)';
+      porProv[key] = (porProv[key] || 0) + (parseFloat(g.monto) || 0);
+    });
+    const provs = Object.keys(porProv);
+    const filas = provs.map(function(p) {
+      return '<div class="hist-row drill-prov" data-prov="' + p.replace(/"/g, '&quot;') + '" style="cursor:pointer"><span>' + p + '</span><span>' + fmt(porProv[p]) + '</span></div>';
+    }).join('');
+    abrirModalGastos(titulo, filas, mostrarAtras, onAtras);
+    document.querySelectorAll('.drill-prov').forEach(function(el) {
+      el.addEventListener('click', function() {
+        const prov = el.dataset.prov;
+        const filtrados = gastos.filter(function(g) { return (g.proveedor_gc || '(sin proveedor)') === prov; });
+        mostrarDrillDetalle(titulo + ' · ' + prov, filtrados, true, function() { mostrarDrillProveedor(rubroLabel, subRubro, gastos, mostrarAtras, onAtras); });
+      });
+    });
+  }
+
+  function mostrarDrillDetalle(titulo, gastos, mostrarAtras, onAtras) {
+    const filas = gastos.map(function(g) {
+      const fecha = g.fecha ? String(g.fecha).split('T')[0] : '';
+      const nota = g.comprobante_nota ? ' · ' + g.comprobante_nota : '';
+      return '<div class="hist-row" style="font-size:13px"><span>' + fecha + nota + '</span><span>' + fmt(g.monto) + '</span></div>';
+    }).join('');
+    abrirModalGastos(titulo, filas, mostrarAtras, onAtras);
+  }
+
   // --- Reparto al vender ---
   document.getElementById('btn-reabrir').addEventListener('click', function() {
     postFila({ modo: 'actualizar', sheet: 'Proyectos', id_proyecto: idProyecto, fields: { estado: 'en_curso' } })
@@ -460,30 +538,17 @@
       card.className = 'card';
       card.style.cursor = 'pointer';
       card.style.marginBottom = '10px';
-      const idDet = 'det-' + r.key;
       card.innerHTML =
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
           '<span style="font-weight:500">' + r.label + '</span>' +
           '<span style="font-variant-numeric:tabular-nums">' + fmt(real) + '</span>' +
-        '</div>' +
-        '<div id="' + idDet + '" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:10px"></div>';
+        '</div>';
       card.addEventListener('click', function() {
-        const det = card.querySelector('#' + idDet);
-        const abierto = det.style.display === 'block';
-        det.style.display = abierto ? 'none' : 'block';
-        if (!abierto && !det.dataset.cargado) {
-          let html = '';
-          if (gastos.length) {
-            html += '<p class="sub" style="margin:0 0 6px">Gastos reales</p>';
-            gastos.forEach(function(g) {
-              html += '<div class="hist-row" style="font-size:12px"><span>' + (g.sub_rubro || g.fecha || '—') + (g.proveedor_gc ? ' · ' + g.proveedor_gc : '') + '</span><span>' + fmt(g.monto) + '</span></div>';
-            });
-          } else {
-            html += '<p class="sub" style="margin:0 0 6px">Sin gastos cargados todavía.</p>';
-          }
-          det.innerHTML = html;
-          det.dataset.cargado = '1';
+        if (!gastos.length) {
+          abrirModalGastos(r.label, '<p class="sub" style="margin:0">Sin gastos cargados todavía.</p>', false, null);
+          return;
         }
+        mostrarDrillRubro(r.key, r.label, gastos);
       });
       realCont.appendChild(card);
     });
