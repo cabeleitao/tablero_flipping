@@ -222,17 +222,45 @@
   function mostrarNivelActor(actor, categoria) {
     const info = (ultimoDashboard.actores_resumen || []).find(function(a) { return a.actor === actor; });
     const saldo = info ? info.saldo : 0;
-    const posiciones = (ultimoDashboard.posiciones_por_actor || []).filter(function(p) { return p.actor === actor; });
 
-    let filas = '<div class="hist-row"><span>Cuenta corriente</span><span style="color:' + (saldo < 0 ? 'var(--danger)' : 'var(--text-secondary)') + '">' + fmt(saldo) + '</span></div>';
-    if (posiciones.length) {
-      filas += '<p class="sub" style="margin:10px 0 6px">Por proyecto</p>';
-      filas += posiciones.map(function(p) {
-        return '<div class="hist-row" style="font-size:13px"><span>' + p.proyecto + '</span><span>' + fmt(p.monto) + '</span></div>';
-      }).join('');
-    }
-    abrirModal(actor, filas, true, function() { mostrarNivelActores(categoria); });
+    const filasIniciales = '<div class="hist-row"><span>Cuenta corriente</span><span style="color:' + (saldo < 0 ? 'var(--danger)' : 'var(--text-secondary)') + '">' + fmt(saldo) + '</span></div>' +
+      '<p class="sub" style="margin:10px 0 0">Cargando movimientos…</p>';
+    abrirModal(actor, filasIniciales, true, function() { mostrarNivelActores(categoria); });
+    mostrarFormActor(actor, categoria);
 
+    const nombrePorId = {};
+    (ultimoDashboard.proyectos_activos || []).forEach(function(p) { nombrePorId[p.id] = p.nombre; });
+    (ultimoDashboard.proyectos_vendidos || []).forEach(function(p) { nombrePorId[p.id] = p.nombre; });
+    const ETIQUETAS_MOV = { aporte_externo: 'Aporte externo', retiro: 'Retiro', aporte_proyecto: 'Aporte a', devolucion_proyecto: 'Recupero de' };
+
+    fetch(APPS_SCRIPT_URL + '?accion=movimientos_actor&actor=' + encodeURIComponent(actor))
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        const movs = (res.ok ? res.movimientos : []).slice().sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+        let filas = '<div class="hist-row"><span>Cuenta corriente</span><span style="color:' + (saldo < 0 ? 'var(--danger)' : 'var(--text-secondary)') + '">' + fmt(saldo) + '</span></div>';
+        if (movs.length) {
+          filas += '<p class="sub" style="margin:10px 0 6px">Movimientos</p>';
+          filas += movs.map(function(m) {
+            const monto = parseFloat(m.monto) || 0;
+            const positivo = m.tipo_movimiento === 'aporte_externo' || m.tipo_movimiento === 'devolucion_proyecto';
+            const fecha = m.fecha ? String(m.fecha).split('T')[0] : '';
+            const desc = ETIQUETAS_MOV[m.tipo_movimiento] || m.tipo_movimiento;
+            const proyecto = m.id_proyecto ? (' ' + (nombrePorId[m.id_proyecto] || m.id_proyecto)) : '';
+            return '<div class="hist-row" style="font-size:13px"><span>' + fecha + ' · ' + desc + proyecto + '</span><span style="color:' + (positivo ? 'var(--success)' : 'var(--danger)') + '">' + (positivo ? '+' : '−') + fmt(monto) + '</span></div>';
+          }).join('');
+        } else {
+          filas += '<p class="sub" style="margin:10px 0 0">Sin movimientos todavía.</p>';
+        }
+        document.getElementById('modal-detalle-lista').innerHTML = filas;
+      })
+      .catch(function() {
+        document.getElementById('modal-detalle-lista').innerHTML += '<p class="sub" style="margin:10px 0 0">No se pudo cargar el historial.</p>';
+      });
+  }
+
+  function mostrarFormActor(actor, categoria) {
+    const info = (ultimoDashboard.actores_resumen || []).find(function(a) { return a.actor === actor; });
+    const saldo = info ? info.saldo : 0;
     const form = document.getElementById('modal-detalle-form');
     form.style.display = 'block';
     let formHtml =
