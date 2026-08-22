@@ -834,6 +834,8 @@
     document.getElementById('f-financiamiento').style.display = 'block';
     document.getElementById('label-tipo-fuente').textContent = modo === 'devolucion_proyecto' ? 'Nueva fuente (opcional)' : 'Tipo de actor';
 
+    if (sociosConError.length) { sociosConError = []; renderSocios(); }
+
     const refiCont = document.getElementById('refi-devolver');
     if (modo === 'devolucion_proyecto') {
       refiCont.style.display = 'block';
@@ -926,24 +928,33 @@
   document.getElementById('actor_existente').addEventListener('change', actualizarCampoNuevoActor);
 
   let socios = [{ nombre: 'Fede', pct: 50 }, { nombre: 'Cabe', pct: 50 }];
+  let sociosConError = [];
 
   function renderSocios() {
     const cont = document.getElementById('socios-lista');
     cont.innerHTML = '';
     socios.forEach(function(s, i) {
+      const conError = sociosConError.indexOf(s.nombre) !== -1;
       const row = document.createElement('div');
       row.className = 'socio-row';
       row.innerHTML =
-        '<input type="text" value="' + s.nombre + '" data-i="' + i + '" data-f="nombre" placeholder="Nombre">' +
-        '<input type="number" value="' + s.pct + '" data-i="' + i + '" data-f="pct" min="0" max="100" step="0.1">' +
+        '<input type="text" value="' + s.nombre + '" data-i="' + i + '" data-f="nombre" placeholder="Nombre"' + (conError ? ' style="border-color:var(--danger)"' : '') + '>' +
+        '<input type="number" value="' + s.pct + '" data-i="' + i + '" data-f="pct" min="0" max="100" step="0.1"' + (conError ? ' style="border-color:var(--danger)"' : '') + '>' +
         '<span style="font-size:13px;color:var(--text-secondary)">%</span>' +
         (socios.length > 1 ? '<button type="button" class="rm" data-i="' + i + '">×</button>' : '');
       cont.appendChild(row);
+      if (conError) {
+        const err = document.createElement('p');
+        err.style.cssText = 'margin:2px 0 10px;color:var(--danger);font-size:12px';
+        err.textContent = s.nombre + ': fondos insuficientes';
+        cont.appendChild(err);
+      }
     });
     cont.querySelectorAll('input').forEach(function(inp) {
       inp.addEventListener('input', function() {
         const i = parseInt(inp.dataset.i), f = inp.dataset.f;
         socios[i][f] = f === 'pct' ? parseFloat(inp.value) || 0 : inp.value;
+        if (sociosConError.length) { sociosConError = []; renderSocios(); }
         updatePctTotal();
       });
     });
@@ -980,13 +991,19 @@
       const total = socios.reduce(function(a, s) { return a + (parseFloat(s.pct) || 0); }, 0);
       if (Math.abs(total - 100) > 0.5) return { error: 'El reparto entre socios tiene que sumar 100%.' };
       const fecha = document.getElementById('fecha_desembolso_propio').value;
-      const insuficiente = socios.find(function(s) {
+
+      const insuficientes = socios.filter(function(s) {
         const asignado = montoTotal * (parseFloat(s.pct) || 0) / 100;
         return asignado > saldoDe(s.nombre) + 0.5;
       });
-      if (insuficiente) {
-        return { error: 'Fondos insuficientes: ' + insuficiente.nombre + ' tiene ' + fmt(saldoDe(insuficiente.nombre)) + ' disponible. Realizá un aporte de capital desde la sección Financiación.' };
+      if (insuficientes.length) {
+        sociosConError = insuficientes.map(function(s) { return s.nombre; });
+        renderSocios();
+        const nombres = insuficientes.map(function(s) { return s.nombre; }).join(' y ');
+        const verbo = insuficientes.length > 1 ? 'no tienen' : 'no tiene';
+        return { error: 'Fondos insuficientes: ' + nombres + ' ' + verbo + ' saldo suficiente. Realizá un aporte de capital desde la sección Financiación.' };
       }
+      sociosConError = [];
       const envios = socios.map(function(s) {
         return postFila({ sheet: 'Movimientos', fields: {
           mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 4),

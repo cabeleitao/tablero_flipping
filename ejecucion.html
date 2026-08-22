@@ -107,12 +107,10 @@
       .then(function(data) {
         btn.disabled = false;
         if (data.ok) {
-          msg.textContent = 'Gasto guardado.';
+          msg.textContent = 'Gasto guardado. Volviendo…';
           msg.className = 'ok';
-          const idActual = document.getElementById('proyecto').value;
-          document.getElementById('f').reset();
-          document.getElementById('fecha').valueAsDate = new Date();
-          document.getElementById('proyecto').value = idActual;
+          const destino = idPreseleccionado ? ('proyecto-editar.html?id=' + encodeURIComponent(idPreseleccionado)) : 'index.html';
+          setTimeout(function() { window.location.href = destino; }, 700);
         } else {
           msg.textContent = 'Error: ' + data.error;
           msg.className = 'err';
