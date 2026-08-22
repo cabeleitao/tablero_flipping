@@ -138,7 +138,15 @@
       <p class="sub" id="titulo-form-financiamiento" style="margin:0 0 6px">Nuevo financiamiento</p>
       <input type="hidden" id="tipo_movimiento_nuevo" value="aporte_proyecto">
 
-      <label for="tipo_fuente">Tipo de actor</label>
+      <div id="refi-devolver" style="display:none;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border)">
+        <label style="margin-top:0">¿A quién le devolvés? (marcá los que correspondan)</label>
+        <div id="refi-devolver-filas"></div>
+        <p class="sub" id="refi-devolver-total" style="margin:8px 0 0"></p>
+        <label for="refi-fecha">Fecha de la operación</label>
+        <input type="date" id="refi-fecha">
+      </div>
+
+      <label for="tipo_fuente" id="label-tipo-fuente">Tipo de actor</label>
       <select id="tipo_fuente">
         <option value="propio">Capital propio</option>
         <option value="prestamo">Préstamo de terceros</option>
@@ -157,8 +165,12 @@
       </div>
 
       <div id="campos-terceros" style="display:none">
-        <label for="nombre_prestamista_inversor">Nombre del prestamista o inversor</label>
-        <input type="text" id="nombre_prestamista_inversor">
+        <label for="actor_existente" id="label-actor-existente">Inversor</label>
+        <select id="actor_existente"></select>
+        <div id="campo-nombre-nuevo" style="display:none">
+          <label for="nombre_prestamista_inversor">Nombre</label>
+          <input type="text" id="nombre_prestamista_inversor">
+        </div>
         <label for="monto_fin">Monto</label>
         <input type="number" id="monto_fin" step="0.01" min="0">
         <label for="tasa_anual">Tasa anual (%)</label>
@@ -219,12 +231,20 @@
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
   const params = new URLSearchParams(window.location.search);
   const idProyecto = params.get('id');
+  let actoresGlobal = [];
+
+  function cargarActoresGlobal() {
+    return fetch(APPS_SCRIPT_URL + '?accion=dashboard')
+      .then(function(r) { return r.json(); })
+      .then(function(res) { if (res.ok) actoresGlobal = res.data.actores_resumen || []; })
+      .catch(function() {});
+  }
 
   if (!idProyecto) {
     document.getElementById('titulo').textContent = 'Falta el id del proyecto';
   } else {
     document.getElementById('link-gasto').href = 'ejecucion.html?id=' + encodeURIComponent(idProyecto);
-    cargarDetalle();
+    cargarActoresGlobal().then(cargarDetalle);
   }
 
   document.querySelectorAll('.tab').forEach(function(tab) {
@@ -612,7 +632,7 @@
   });
   document.getElementById('btn-mostrar-devolucion').addEventListener('click', function() {
     document.getElementById('recupero-contenido').style.display = 'none';
-    abrirFormFinanciamiento('devolucion_proyecto', 'Refinanciar (devolución a un actor)');
+    abrirFormFinanciamiento('devolucion_proyecto', 'Refinanciar');
   });
 
   // --- Recupero (reparto final al vender, precargado por actor) ---
@@ -725,16 +745,97 @@
     document.getElementById('titulo-form-financiamiento').textContent = titulo;
     document.getElementById('f-editar-financiamiento').style.display = 'none';
     document.getElementById('f-financiamiento').style.display = 'block';
+    document.getElementById('label-tipo-fuente').textContent = modo === 'devolucion_proyecto' ? 'Nueva fuente (opcional)' : 'Tipo de actor';
+
+    const refiCont = document.getElementById('refi-devolver');
+    if (modo === 'devolucion_proyecto') {
+      refiCont.style.display = 'block';
+      renderRefiDevolver();
+      document.getElementById('refi-fecha').valueAsDate = new Date();
+    } else {
+      refiCont.style.display = 'none';
+    }
+
     actualizarCamposFinanciamiento();
     document.getElementById('f-financiamiento').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function actualizarCamposFinanciamiento() {
-    const esPropio = document.getElementById('tipo_fuente').value === 'propio';
-    const esAporte = formModoActual === 'aporte_proyecto';
-    document.getElementById('fecha-monto-propio').style.display = (esPropio && esAporte) ? 'block' : 'none';
-    document.getElementById('campos-terceros').style.display = (esPropio && esAporte) ? 'none' : 'block';
+  function calcularNetoPorActorEnProyecto() {
+    const neto = {};
+    const tipoActor = {};
+    movimientosActual.forEach(function(m) {
+      const monto = parseFloat(m.monto) || 0;
+      const signo = m.tipo_movimiento === 'aporte_proyecto' ? 1 : -1;
+      neto[m.actor] = (neto[m.actor] || 0) + signo * monto;
+      tipoActor[m.actor] = m.tipo_actor;
+    });
+    return Object.keys(neto)
+      .filter(function(actor) { return neto[actor] > 0.5; })
+      .map(function(actor) { return { actor: actor, tipo_actor: tipoActor[actor] || 'propio', monto: neto[actor] }; });
   }
+
+  function renderRefiDevolver() {
+    const filas = calcularNetoPorActorEnProyecto();
+    const cont = document.getElementById('refi-devolver-filas');
+    if (!filas.length) {
+      cont.innerHTML = '<p class="sub" style="margin:0">No hay actores con inversión pendiente en este proyecto.</p>';
+      document.getElementById('refi-devolver-total').textContent = '';
+      return;
+    }
+    cont.innerHTML = filas.map(function(f, i) {
+      return '<div class="socio-row">' +
+        '<label style="display:flex;align-items:center;gap:8px;flex:2;margin:0"><input type="checkbox" class="refi-check" data-i="' + i + '"> ' + f.actor + ' (' + f.tipo_actor + ') — invertido ' + fmt(f.monto) + '</label>' +
+        '<input type="number" class="refi-monto" data-i="' + i + '" value="' + f.monto.toFixed(2) + '" step="0.01" style="flex:1">' +
+        '</div>';
+    }).join('');
+    cont.dataset.filas = JSON.stringify(filas);
+    cont.querySelectorAll('.refi-check, .refi-monto').forEach(function(el) {
+      el.addEventListener('input', actualizarTotalRefiDevolver);
+    });
+    actualizarTotalRefiDevolver();
+  }
+
+  function actualizarTotalRefiDevolver() {
+    const cont = document.getElementById('refi-devolver-filas');
+    let total = 0;
+    cont.querySelectorAll('.refi-check').forEach(function(chk) {
+      if (chk.checked) {
+        const monto = parseFloat(cont.querySelector('.refi-monto[data-i="' + chk.dataset.i + '"]').value) || 0;
+        total += monto;
+      }
+    });
+    document.getElementById('refi-devolver-total').textContent = 'A devolver: ' + fmt(total);
+  }
+
+  function actualizarCamposFinanciamiento() {
+    const tipo = document.getElementById('tipo_fuente').value;
+    const mostrarSplit = tipo === 'propio';
+    document.getElementById('fecha-monto-propio').style.display = mostrarSplit ? 'block' : 'none';
+    document.getElementById('campos-terceros').style.display = mostrarSplit ? 'none' : 'block';
+    if (!mostrarSplit) actualizarSelectorActor();
+  }
+
+  function actualizarSelectorActor() {
+    const tipo = document.getElementById('tipo_fuente').value;
+    const etiquetas = { propio: 'Socio', inversor: 'Inversor', prestamo: 'Préstamo / banco' };
+    document.getElementById('label-actor-existente').textContent = etiquetas[tipo] || 'Actor';
+    const existentes = actoresGlobal.filter(function(a) { return a.tipo_actor === tipo; });
+    let opciones = existentes.map(function(a) {
+      return '<option value="' + a.actor.replace(/"/g, '&quot;') + '">' + a.actor + ' — disponible ' + fmt(a.saldo) + '</option>';
+    }).join('');
+    if (tipo !== 'propio') {
+      opciones += '<option value="__nuevo__">+ Nuevo ' + (tipo === 'inversor' ? 'inversor' : 'préstamo') + '</option>';
+    }
+    const sel = document.getElementById('actor_existente');
+    sel.innerHTML = opciones || '<option value="">Sin ' + (etiquetas[tipo] || 'actores').toLowerCase() + 's cargados todavía</option>';
+    actualizarCampoNuevoActor();
+  }
+
+  function actualizarCampoNuevoActor() {
+    const esNuevo = document.getElementById('actor_existente').value === '__nuevo__';
+    document.getElementById('campo-nombre-nuevo').style.display = esNuevo ? 'block' : 'none';
+  }
+  document.getElementById('actor_existente').addEventListener('change', actualizarCampoNuevoActor);
 
   let socios = [{ nombre: 'Fede', pct: 50 }, { nombre: 'Cabe', pct: 50 }];
 
@@ -774,54 +875,138 @@
 
   document.getElementById('tipo_fuente').addEventListener('change', actualizarCamposFinanciamiento);
 
+  function validarYArmarNuevaFuente(opcional) {
+    const tipo = document.getElementById('tipo_fuente').value;
+
+    function saldoDe(nombre) {
+      const info = actoresGlobal.find(function(a) { return a.actor === nombre; });
+      return info ? info.saldo : 0;
+    }
+
+    if (tipo === 'propio') {
+      const montoTotal = parseFloat(document.getElementById('monto_propio_total').value) || 0;
+      if (montoTotal <= 0) {
+        if (opcional) return { envios: [], montoTotal: 0 };
+        return { error: 'Completá el monto.' };
+      }
+      const total = socios.reduce(function(a, s) { return a + (parseFloat(s.pct) || 0); }, 0);
+      if (Math.abs(total - 100) > 0.5) return { error: 'El reparto entre socios tiene que sumar 100%.' };
+      const fecha = document.getElementById('fecha_desembolso_propio').value;
+      const insuficiente = socios.find(function(s) {
+        const asignado = montoTotal * (parseFloat(s.pct) || 0) / 100;
+        return asignado > saldoDe(s.nombre) + 0.5;
+      });
+      if (insuficiente) {
+        return { error: 'Fondos insuficientes: ' + insuficiente.nombre + ' tiene ' + fmt(saldoDe(insuficiente.nombre)) + ' disponible. Realizá un aporte de capital desde la sección Financiación.' };
+      }
+      const envios = socios.map(function(s) {
+        return postFila({ sheet: 'Movimientos', fields: {
+          mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 4),
+          actor: s.nombre, tipo_actor: 'propio', id_proyecto: idProyecto, tipo_movimiento: 'aporte_proyecto',
+          monto: (montoTotal * (parseFloat(s.pct) || 0) / 100).toFixed(2),
+          fecha: fecha, tasa_anual: '', penalidad_prepago: '', retorno_pactado: '', nota: ''
+        }});
+      });
+      return { envios: envios, montoTotal: montoTotal };
+    }
+
+    const seleccion = document.getElementById('actor_existente').value;
+    const monto = parseFloat(document.getElementById('monto_fin').value) || 0;
+    const fecha = document.getElementById('fecha_desembolso').value;
+    if (!seleccion && monto <= 0) {
+      if (opcional) return { envios: [], montoTotal: 0 };
+      return { error: 'Completá el actor y el monto.' };
+    }
+    if (monto <= 0) return { error: 'Completá el monto.' };
+    const esNuevo = seleccion === '__nuevo__';
+    const nombreActor = esNuevo ? document.getElementById('nombre_prestamista_inversor').value.trim() : seleccion;
+    if (!nombreActor) return { error: 'Completá el nombre.' };
+    if (!esNuevo && monto > saldoDe(nombreActor) + 0.5) {
+      return { error: 'Fondos insuficientes: ' + nombreActor + ' tiene ' + fmt(saldoDe(nombreActor)) + ' disponible. Realizá un aporte de capital desde la sección Financiación.' };
+    }
+    const camposComunes = {
+      tipo_actor: tipo,
+      tasa_anual: document.getElementById('tasa_anual').value,
+      penalidad_prepago: document.getElementById('penalidad_prepago').value,
+      retorno_pactado: document.getElementById('retorno_pactado').value
+    };
+    const envios = [];
+    if (esNuevo) {
+      envios.push(postFila({ sheet: 'Movimientos', fields: Object.assign({
+        mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        actor: nombreActor, id_proyecto: '', tipo_movimiento: 'aporte_externo',
+        monto: monto, fecha: fecha, nota: 'Alta desde proyecto'
+      }, camposComunes) }));
+    }
+    envios.push(postFila({ sheet: 'Movimientos', fields: Object.assign({
+      mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) + 'p',
+      actor: nombreActor, id_proyecto: idProyecto, tipo_movimiento: 'aporte_proyecto',
+      monto: monto, fecha: fecha, nota: ''
+    }, camposComunes) }));
+    return { envios: envios, montoTotal: monto };
+  }
+
   document.getElementById('f-financiamiento').addEventListener('submit', function(e) {
     e.preventDefault();
     const btn = document.getElementById('btn-financiamiento');
     const msg = document.getElementById('msg-financiamiento');
-    const tipo = document.getElementById('tipo_fuente').value;
-    const esAportePropioConSocios = tipo === 'propio' && formModoActual === 'aporte_proyecto';
     msg.textContent = '';
 
-    if (esAportePropioConSocios) {
-      const total = socios.reduce(function(a, s) { return a + (parseFloat(s.pct) || 0); }, 0);
-      if (Math.abs(total - 100) > 0.5) { msg.textContent = 'El reparto entre socios tiene que sumar 100%.'; msg.className = 'err'; return; }
-      const montoTotal = parseFloat(document.getElementById('monto_propio_total').value) || 0;
-      const fecha = document.getElementById('fecha_desembolso_propio').value;
+    if (formModoActual === 'devolucion_proyecto') {
+      // Refinanciar: devoluciones marcadas (a quién le devolvés) + fuente nueva opcional (de dónde sale la plata).
+      const cont = document.getElementById('refi-devolver-filas');
+      const filas = JSON.parse(cont.dataset.filas || '[]');
+      const fechaRefi = document.getElementById('refi-fecha').value;
+      const devoluciones = [];
+      cont.querySelectorAll('.refi-check').forEach(function(chk) {
+        if (!chk.checked) return;
+        const i = chk.dataset.i;
+        const monto = parseFloat(cont.querySelector('.refi-monto[data-i="' + i + '"]').value) || 0;
+        if (monto <= 0) return;
+        devoluciones.push({ actor: filas[i].actor, tipo_actor: filas[i].tipo_actor, monto: monto });
+      });
+
+      const resultadoFuente = validarYArmarNuevaFuente(true);
+      if (resultadoFuente.error) { msg.textContent = resultadoFuente.error; msg.className = 'err'; return; }
+      if (!devoluciones.length && !resultadoFuente.envios.length) {
+        msg.textContent = 'Marcá a quién devolverle, o cargá una fuente nueva.';
+        msg.className = 'err';
+        return;
+      }
+
       btn.disabled = true;
-      Promise.all(socios.map(function(s) {
+      const enviosDevolucion = devoluciones.map(function(d) {
         return postFila({ sheet: 'Movimientos', fields: {
-          mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-          actor: s.nombre, tipo_actor: 'propio', id_proyecto: idProyecto, tipo_movimiento: formModoActual,
-          monto: (montoTotal * (parseFloat(s.pct) || 0) / 100).toFixed(2),
-          fecha: fecha, tasa_anual: '', penalidad_prepago: '', retorno_pactado: '', nota: ''
+          mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 4),
+          actor: d.actor, tipo_actor: d.tipo_actor, id_proyecto: idProyecto, tipo_movimiento: 'devolucion_proyecto',
+          monto: d.monto, fecha: fechaRefi, tasa_anual: '', penalidad_prepago: '', retorno_pactado: '', nota: 'Refinanciación'
         }});
-      })).then(function(resultados) {
+      });
+
+      Promise.all(enviosDevolucion.concat(resultadoFuente.envios)).then(function(resultados) {
+        btn.disabled = false;
         const fallo = resultados.find(function(r) { return !r.ok; });
-        btn.disabled = false;
         if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
-        volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…');
+        msg.textContent = 'Guardado.';
+        msg.className = 'ok';
+        document.getElementById('f-financiamiento').style.display = 'none';
+        cargarActoresGlobal().then(cargarDetalle);
       }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+
     } else {
-      btn.disabled = true;
-      const monto = document.getElementById('monto_fin').value;
-      const fecha = document.getElementById('fecha_desembolso').value;
-      postFila({ sheet: 'Movimientos', fields: {
-        mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        actor: document.getElementById('nombre_prestamista_inversor').value,
-        tipo_actor: tipo,
-        id_proyecto: idProyecto,
-        tipo_movimiento: formModoActual,
-        monto: monto,
-        fecha: fecha,
-        tasa_anual: document.getElementById('tasa_anual').value,
-        penalidad_prepago: document.getElementById('penalidad_prepago').value,
-        retorno_pactado: document.getElementById('retorno_pactado').value,
-        nota: ''
-      }}).then(function(data) {
-        btn.disabled = false;
-        if (!data.ok) { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }
-        volverAlPanelConMensaje(msg, 'Guardado. Volviendo al panel…');
-      }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+      const resultado = validarYArmarNuevaFuente(false);
+      if (resultado.error) { msg.textContent = resultado.error; msg.className = 'err'; return; }
+      const btnEl = btn;
+      btnEl.disabled = true;
+      Promise.all(resultado.envios).then(function(resultados) {
+        btnEl.disabled = false;
+        const fallo = resultados.find(function(r) { return !r.ok; });
+        if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
+        msg.textContent = 'Guardado.';
+        msg.className = 'ok';
+        document.getElementById('f-financiamiento').style.display = 'none';
+        cargarActoresGlobal().then(cargarDetalle);
+      }).catch(function() { btnEl.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     }
   });
 
