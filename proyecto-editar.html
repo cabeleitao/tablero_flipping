@@ -370,8 +370,13 @@
           .reduce(function(a, e) { return a + (parseFloat(e.monto) || 0); }, 0);
         const resumen = document.getElementById('resumen-financiamiento');
         if (p.estado === 'vendido') {
-          resumen.textContent = 'Proyecto vendido — usá "Registrar recupero" para devolverle a cada actor lo que le corresponde.';
-          resumen.style.color = 'var(--text-secondary)';
+          if (Math.abs(financiado) < 0.5) {
+            resumen.textContent = 'Proyecto vendido y recupero completo — no quedan movimientos pendientes.';
+            resumen.style.color = 'var(--success)';
+          } else {
+            resumen.textContent = 'Proyecto vendido — usá "Registrar recupero" para devolverle a cada actor lo que le corresponde.';
+            resumen.style.color = 'var(--text-secondary)';
+          }
         } else if (necesario > 0) {
           resumen.textContent = 'Financiado neto: ' + fmt(financiado) + ' de ' + fmt(necesario) + ' necesario (compra + remodelación ejecutadas)';
           resumen.style.color = financiado < necesario ? 'var(--danger)' : 'var(--text-secondary)';
@@ -616,11 +621,17 @@
 
   function inicializarRecupero(cierre, movimientos) {
     const disponible = !!(cierre && cierre.precio_venta);
-    document.getElementById('btn-mostrar-recupero').style.display = disponible ? 'inline-flex' : 'none';
     if (!disponible) {
+      document.getElementById('btn-mostrar-recupero').style.display = 'none';
       document.getElementById('recupero-contenido').style.display = 'none';
+      document.getElementById('btn-mostrar-aporte').style.display = 'inline-flex';
+      document.getElementById('btn-mostrar-devolucion').style.display = 'inline-flex';
       return;
     }
+    // Proyecto vendido: nunca tiene sentido agregar financiamiento nuevo ni refinanciar.
+    document.getElementById('btn-mostrar-aporte').style.display = 'none';
+    document.getElementById('btn-mostrar-devolucion').style.display = 'none';
+
     recuperoRecibido = (parseFloat(cierre.precio_venta) || 0) - (parseFloat(cierre.gastos_cierre_venta) || 0);
     document.getElementById('recupero-recibido').textContent = fmt(recuperoRecibido);
 
@@ -635,6 +646,9 @@
     recuperoFilas = Object.keys(netoPorActor)
       .filter(function(actor) { return netoPorActor[actor] > 0.01; })
       .map(function(actor) { return { actor: actor, tipo_actor: tipoPorActor[actor] || 'propio', monto: netoPorActor[actor] }; });
+
+    document.getElementById('btn-mostrar-recupero').style.display = recuperoFilas.length ? 'inline-flex' : 'none';
+    if (!recuperoFilas.length) document.getElementById('recupero-contenido').style.display = 'none';
   }
 
   document.getElementById('btn-mostrar-recupero').addEventListener('click', function() {

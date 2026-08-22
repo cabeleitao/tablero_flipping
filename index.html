@@ -160,26 +160,82 @@
     const porActor = {};
     detalle.forEach(function(f) { porActor[f.nombre] = (porActor[f.nombre] || 0) + f.monto; });
     const nombres = Object.keys(porActor);
-    const filas = nombres.length
+    const filas = (nombres.length
       ? nombres.map(function(nombre) {
           return '<div class="hist-row actor-fin" data-actor="' + nombre.replace(/"/g, '&quot;') + '" data-cat="' + categoria + '" style="cursor:pointer"><span>' + nombre + '</span><span>' + fmt(porActor[nombre]) + '</span></div>';
         }).join('')
-      : '<p class="sub" style="margin:0">Sin financiamiento activo en esta categoría.</p>';
+      : '<p class="sub" style="margin:0 0 10px">Sin financiamiento activo en esta categoría.</p>') +
+      '<div class="hist-row" id="btn-sumar-actor" style="cursor:pointer;border-bottom:none"><span style="color:var(--accent);font-weight:600">+ Sumar ' + ETIQUETAS_CATEGORIA[categoria].toLowerCase() + '</span></div>';
     abrirModal(ETIQUETAS_CATEGORIA[categoria], filas, true, mostrarNivelCategorias);
     document.querySelectorAll('.actor-fin').forEach(function(el) {
       el.addEventListener('click', function() { mostrarNivelActor(el.dataset.actor, el.dataset.cat); });
+    });
+    document.getElementById('btn-sumar-actor').addEventListener('click', function() { mostrarFormNuevoActor(categoria); });
+  }
+
+  function mostrarFormNuevoActor(categoria) {
+    abrirModal('Sumar ' + ETIQUETAS_CATEGORIA[categoria].toLowerCase(), '', true, function() { mostrarNivelActores(categoria); });
+    const form = document.getElementById('modal-detalle-form');
+    form.style.display = 'block';
+    form.innerHTML =
+      '<label for="nuevo-actor-nombre">Nombre</label>' +
+      '<input type="text" id="nuevo-actor-nombre" placeholder="Nombre del socio, inversor o banco">' +
+      '<label for="nuevo-actor-monto">Monto que entra al sistema</label>' +
+      '<input type="number" id="nuevo-actor-monto" step="0.01" min="0">' +
+      '<label for="nuevo-actor-fecha">Fecha</label>' +
+      '<input type="date" id="nuevo-actor-fecha">' +
+      '<label for="nuevo-actor-nota">Nota</label>' +
+      '<input type="text" id="nuevo-actor-nota">' +
+      '<button type="button" id="btn-guardar-nuevo-actor" style="width:100%;margin-top:16px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer;font-weight:600">Guardar</button>' +
+      '<div id="msg-nuevo-actor" style="margin-top:8px;font-size:13px"></div>';
+    document.getElementById('nuevo-actor-fecha').valueAsDate = new Date();
+
+    document.getElementById('btn-guardar-nuevo-actor').addEventListener('click', function() {
+      const msg = document.getElementById('msg-nuevo-actor');
+      const nombre = document.getElementById('nuevo-actor-nombre').value.trim();
+      const monto = parseFloat(document.getElementById('nuevo-actor-monto').value) || 0;
+      if (!nombre || !monto) { msg.textContent = 'Completá el nombre y el monto.'; msg.className = 'err'; return; }
+      const fields = {
+        mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        actor: nombre,
+        tipo_actor: categoria,
+        id_proyecto: '',
+        tipo_movimiento: 'aporte_externo',
+        monto: monto,
+        fecha: document.getElementById('nuevo-actor-fecha').value,
+        nota: document.getElementById('nuevo-actor-nota').value
+      };
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ sheet: 'Movimientos', fields: fields })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.ok) { window.location.reload(); }
+          else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+        })
+        .catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     });
   }
 
   function mostrarNivelActor(actor, categoria) {
     const info = (ultimoDashboard.actores_resumen || []).find(function(a) { return a.actor === actor; });
     const saldo = info ? info.saldo : 0;
-    const filas = '<div class="hist-row"><span>Cuenta corriente</span><span style="color:' + (saldo < 0 ? 'var(--danger)' : 'var(--text-secondary)') + '">' + fmt(saldo) + '</span></div>';
+    const posiciones = (ultimoDashboard.posiciones_por_actor || []).filter(function(p) { return p.actor === actor; });
+
+    let filas = '<div class="hist-row"><span>Cuenta corriente</span><span style="color:' + (saldo < 0 ? 'var(--danger)' : 'var(--text-secondary)') + '">' + fmt(saldo) + '</span></div>';
+    if (posiciones.length) {
+      filas += '<p class="sub" style="margin:10px 0 6px">Por proyecto</p>';
+      filas += posiciones.map(function(p) {
+        return '<div class="hist-row" style="font-size:13px"><span>' + p.proyecto + '</span><span>' + fmt(p.monto) + '</span></div>';
+      }).join('');
+    }
     abrirModal(actor, filas, true, function() { mostrarNivelActores(categoria); });
 
     const form = document.getElementById('modal-detalle-form');
     form.style.display = 'block';
-    form.innerHTML =
+    let formHtml =
       '<label for="mov-tipo" style="margin-top:16px">Registrar aporte o retiro</label>' +
       '<select id="mov-tipo">' +
         '<option value="aporte_externo">Aporte externo (entra plata)</option>' +
@@ -193,6 +249,10 @@
       '<input type="text" id="mov-nota">' +
       '<button type="button" id="btn-guardar-movimiento" style="width:100%;margin-top:16px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer;font-weight:600">Guardar</button>' +
       '<div id="msg-movimiento" style="margin-top:8px;font-size:13px"></div>';
+    if (Math.abs(saldo) < 0.01) {
+      formHtml += '<button type="button" id="btn-eliminar-actor" class="btn danger" style="width:100%;margin-top:20px;justify-content:center">− Eliminar ' + actor + '</button>';
+    }
+    form.innerHTML = formHtml;
     document.getElementById('mov-fecha').valueAsDate = new Date();
 
     document.getElementById('btn-guardar-movimiento').addEventListener('click', function() {
@@ -221,6 +281,24 @@
         })
         .catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     });
+
+    const btnEliminar = document.getElementById('btn-eliminar-actor');
+    if (btnEliminar) {
+      btnEliminar.addEventListener('click', function() {
+        if (!confirm('¿Eliminar a ' + actor + '? Se van a borrar todos sus movimientos. No se puede deshacer.')) return;
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ modo: 'eliminar_actor', actor: actor })
+        })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data.ok) { window.location.reload(); }
+            else { alert('Error: ' + data.error); }
+          })
+          .catch(function() { alert('No se pudo conectar.'); });
+      });
+    }
   }
 
   document.getElementById('kpi-financiacion-card').addEventListener('click', mostrarNivelCategorias);
