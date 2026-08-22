@@ -374,7 +374,7 @@
         }
 
         document.getElementById('contenido').style.display = 'block';
-        renderResumen(res.data.presupuesto || [], res.data.ejecucion || [], mov, res.data.cierre);
+        renderResumen(res.data.presupuesto || [], res.data.ejecucion || [], mov, res.data.cierre, p);
         inicializarRecupero(c, mov);
       })
       .catch(function() {
@@ -393,7 +393,7 @@
       }).catch(function() { alert('No se pudo conectar.'); });
   });
 
-  function renderResumen(presupuesto, ejecucion, movimientos, cierre) {
+  function renderResumen(presupuesto, ejecucion, movimientos, cierre, proyecto) {
     const rubros = [
       { key: 'compra', label: 'Compra' },
       { key: 'remodelacion', label: 'Remodelación' },
@@ -471,12 +471,30 @@
 
     if (cierre && cierre.precio_venta) {
       const precioVenta = parseFloat(cierre.precio_venta) || 0;
-      const ganancia = precioVenta - totalReal;
+      const gananciaNeta = precioVenta - totalReal;
+      const inversionReal = (realPorRubro.compra || 0) + (realPorRubro.remodelacion || 0);
+      const tasaRetorno = inversionReal > 0 ? (gananciaNeta / inversionReal * 100) : 0;
+
+      let mesesTexto = '';
+      let retornoMensualTexto = '';
+      if (proyecto && proyecto.fecha_compra && cierre.fecha_venta) {
+        const dIni = new Date(proyecto.fecha_compra);
+        const dFin = new Date(cierre.fecha_venta);
+        const dias = (dFin - dIni) / (1000 * 60 * 60 * 24);
+        const meses = Math.max(dias / 30.44, 1);
+        const retornoMensual = tasaRetorno / meses;
+        mesesTexto = ' (' + meses.toFixed(1) + ' meses)';
+        retornoMensualTexto =
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span>Retorno mensual</span><span style="font-variant-numeric:tabular-nums">' + retornoMensual.toFixed(2) + '%</span></div>';
+      }
+
       const gananciaCard = document.createElement('div');
       gananciaCard.className = 'card';
       gananciaCard.innerHTML =
         '<div style="display:flex;justify-content:space-between;align-items:center"><span>Precio de venta real</span><span style="font-variant-numeric:tabular-nums">' + fmt(precioVenta) + '</span></div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-weight:600"><span>Ganancia bruta</span><span style="font-variant-numeric:tabular-nums;color:' + (ganancia >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmt(ganancia) + '</span></div>';
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-weight:600"><span>Ganancia neta</span><span style="font-variant-numeric:tabular-nums;color:' + (gananciaNeta >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmt(gananciaNeta) + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><span>Tasa de retorno</span><span style="font-variant-numeric:tabular-nums">' + tasaRetorno.toFixed(2) + '%' + mesesTexto + '</span></div>' +
+        retornoMensualTexto;
       realCont.appendChild(gananciaCard);
     }
   }

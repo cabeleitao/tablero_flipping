@@ -136,7 +136,16 @@
   function mostrarNivelCategorias() {
     if (!ultimoDashboard) return;
     const r = ultimoDashboard.financiamiento_resumen || { propio: 0, prestamo: 0, inversor: 0 };
-    const filas = ['propio', 'inversor', 'prestamo'].map(function(cat) {
+    const pendientes = ultimoDashboard.recuperos_pendientes || [];
+    let aviso = '';
+    if (pendientes.length) {
+      const porProyecto = {};
+      pendientes.forEach(function(p) { porProyecto[p.proyecto] = (porProyecto[p.proyecto] || 0) + p.monto; });
+      const detalle = Object.keys(porProyecto).map(function(nombre) { return nombre + ' (' + fmt(porProyecto[nombre]) + ')'; }).join(', ');
+      aviso = '<div class="hist-row" style="background:var(--danger-soft);border-radius:8px;padding:10px 12px;margin-bottom:10px;border-bottom:none">' +
+        '<span style="color:var(--danger);font-size:13px">⚠️ Recupero pendiente: ' + detalle + '</span></div>';
+    }
+    const filas = aviso + ['propio', 'inversor', 'prestamo'].map(function(cat) {
       return '<div class="hist-row categoria-fin" data-cat="' + cat + '" style="cursor:pointer"><span>' + ETIQUETAS_CATEGORIA[cat] + '</span><span>' + fmt(r[cat]) + '</span></div>';
     }).join('');
     abrirModal('Financiación', filas, false, null);
