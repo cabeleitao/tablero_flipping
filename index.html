@@ -315,6 +315,9 @@
   document.getElementById('btn-cerrar-modal').addEventListener('click', function() {
     document.getElementById('modal-detalle').classList.remove('show');
   });
+  document.getElementById('modal-detalle').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+  });
 </script>
 </body>
 </html>

@@ -439,6 +439,9 @@
   document.getElementById('btn-cerrar-modal-gastos').addEventListener('click', function() {
     document.getElementById('modal-gastos').classList.remove('show');
   });
+  document.getElementById('modal-gastos').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+  });
 
   function mostrarDrillRubro(rubroKey, rubroLabel, gastos) {
     const haySubRubro = gastos.some(function(g) { return g.sub_rubro; });
@@ -895,7 +898,7 @@
     document.getElementById('label-actor-existente').textContent = etiquetas[tipo] || 'Actor';
     const existentes = actoresGlobal.filter(function(a) { return a.tipo_actor === tipo; });
     let opciones = existentes.map(function(a) {
-      return '<option value="' + a.actor.replace(/"/g, '&quot;') + '">' + a.actor + ' — disponible ' + fmt(a.saldo) + '</option>';
+      return '<option value="' + a.actor.replace(/"/g, '&quot;') + '">' + a.actor + ' — ' + (tipo === 'prestamo' ? 'deuda actual ' + fmt(-a.saldo) : 'disponible ' + fmt(a.saldo)) + '</option>';
     }).join('');
     if (tipo !== 'propio') {
       opciones += '<option value="__nuevo__">+ Nuevo ' + (tipo === 'inversor' ? 'inversor' : 'préstamo') + '</option>';
@@ -995,7 +998,7 @@
     const esNuevo = seleccion === '__nuevo__';
     const nombreActor = esNuevo ? document.getElementById('nombre_prestamista_inversor').value.trim() : seleccion;
     if (!nombreActor) return { error: 'Completá el nombre.' };
-    if (!esNuevo && monto > saldoDe(nombreActor) + 0.5) {
+    if (!esNuevo && tipo !== 'prestamo' && monto > saldoDe(nombreActor) + 0.5) {
       return { error: 'Fondos insuficientes: ' + nombreActor + ' tiene ' + fmt(saldoDe(nombreActor)) + ' disponible. Realizá un aporte de capital desde la sección Financiación.' };
     }
     const camposComunes = {
@@ -1005,7 +1008,8 @@
       retorno_pactado: document.getElementById('retorno_pactado').value
     };
     const envios = [];
-    if (esNuevo) {
+    if (esNuevo && tipo !== 'prestamo') {
+      // Un inversor nuevo trae plata reutilizable (billetera propia). Un préstamo, no: es deuda directa del proyecto.
       envios.push(postFila({ sheet: 'Movimientos', fields: Object.assign({
         mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         actor: nombreActor, id_proyecto: '', tipo_movimiento: 'aporte_externo',
