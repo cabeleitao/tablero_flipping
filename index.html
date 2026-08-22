@@ -231,24 +231,40 @@
     const nombrePorId = {};
     (ultimoDashboard.proyectos_activos || []).forEach(function(p) { nombrePorId[p.id] = p.nombre; });
     (ultimoDashboard.proyectos_vendidos || []).forEach(function(p) { nombrePorId[p.id] = p.nombre; });
-    const ETIQUETAS_MOV = { aporte_externo: 'Aporte externo', retiro: 'Retiro', aporte_proyecto: 'Aporte a', devolucion_proyecto: 'Recupero de' };
 
     fetch(APPS_SCRIPT_URL + '?accion=movimientos_actor&actor=' + encodeURIComponent(actor))
       .then(function(r) { return r.json(); })
       .then(function(res) {
-        const movs = (res.ok ? res.movimientos : []).slice().sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+        const movs = res.ok ? res.movimientos : [];
+        let aporteExterno = 0, retiro = 0;
+        const porProyecto = {};
+        movs.forEach(function(m) {
+          const monto = parseFloat(m.monto) || 0;
+          if (!m.id_proyecto) {
+            if (m.tipo_movimiento === 'aporte_externo') aporteExterno += monto;
+            else if (m.tipo_movimiento === 'retiro') retiro += monto;
+          } else {
+            if (!porProyecto[m.id_proyecto]) porProyecto[m.id_proyecto] = { aportado: 0, recuperado: 0 };
+            if (m.tipo_movimiento === 'aporte_proyecto') porProyecto[m.id_proyecto].aportado += monto;
+            else if (m.tipo_movimiento === 'devolucion_proyecto') porProyecto[m.id_proyecto].recuperado += monto;
+          }
+        });
+
         let filas = '<div class="hist-row"><span>Cuenta corriente</span><span style="color:' + (saldo < 0 ? 'var(--danger)' : 'var(--text-secondary)') + '">' + fmt(saldo) + '</span></div>';
-        if (movs.length) {
-          filas += '<p class="sub" style="margin:10px 0 6px">Movimientos</p>';
-          filas += movs.map(function(m) {
-            const monto = parseFloat(m.monto) || 0;
-            const positivo = m.tipo_movimiento === 'aporte_externo' || m.tipo_movimiento === 'devolucion_proyecto';
-            const fecha = m.fecha ? String(m.fecha).split('T')[0] : '';
-            const desc = ETIQUETAS_MOV[m.tipo_movimiento] || m.tipo_movimiento;
-            const proyecto = m.id_proyecto ? (' ' + (nombrePorId[m.id_proyecto] || m.id_proyecto)) : '';
-            return '<div class="hist-row" style="font-size:13px"><span>' + fecha + ' · ' + desc + proyecto + '</span><span style="color:' + (positivo ? 'var(--success)' : 'var(--danger)') + '">' + (positivo ? '+' : '−') + fmt(monto) + '</span></div>';
+        if (aporteExterno) filas += '<div class="hist-row" style="font-size:13px"><span>Aportes externos</span><span style="color:var(--success)">+' + fmt(aporteExterno) + '</span></div>';
+        if (retiro) filas += '<div class="hist-row" style="font-size:13px"><span>Retiros</span><span style="color:var(--danger)">−' + fmt(retiro) + '</span></div>';
+
+        const ids = Object.keys(porProyecto);
+        if (ids.length) {
+          filas += '<p class="sub" style="margin:10px 0 4px">Por proyecto</p>';
+          filas += '<div class="hist-row" style="font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.03em"><span>Proyecto</span><span style="display:flex;gap:14px"><span style="width:66px;text-align:right">Aportado</span><span style="width:66px;text-align:right">Recuperado</span></span></div>';
+          filas += ids.map(function(id) {
+            const d = porProyecto[id];
+            const nombre = nombrePorId[id] || id;
+            return '<div class="hist-row" style="font-size:13px"><span>' + nombre + '</span><span style="display:flex;gap:14px"><span style="width:66px;text-align:right">' + fmt(d.aportado) + '</span><span style="width:66px;text-align:right;color:var(--success)">' + fmt(d.recuperado) + '</span></span></div>';
           }).join('');
-        } else {
+        }
+        if (!aporteExterno && !retiro && !ids.length) {
           filas += '<p class="sub" style="margin:10px 0 0">Sin movimientos todavía.</p>';
         }
         document.getElementById('modal-detalle-lista').innerHTML = filas;
