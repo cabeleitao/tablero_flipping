@@ -504,7 +504,16 @@
   function mostrarDrillDetalle(titulo, gastos, mostrarAtras, onAtras) {
     const filas = gastos.map(function(g) {
       const fecha = g.fecha ? String(g.fecha).split('T')[0] : '';
-      const nota = g.comprobante_nota ? ' · ' + g.comprobante_nota : '';
+      let nota = '';
+      if (g.comprobante_nota) {
+        const match = g.comprobante_nota.match(/(https?:\/\/\S+)/);
+        if (match) {
+          const textoPrevio = g.comprobante_nota.slice(0, match.index).replace(/:\s*$/, '').trim();
+          nota = ' · ' + (textoPrevio ? textoPrevio + ' ' : '') + '<a href="' + match[1] + '" target="_blank" rel="noopener" style="color:var(--accent)">📎 Ver comprobante</a>';
+        } else {
+          nota = ' · ' + g.comprobante_nota;
+        }
+      }
       return '<div class="hist-row" style="font-size:13px;flex-wrap:wrap"><span>' + fecha + nota + '</span>' +
         '<span style="display:flex;align-items:center;gap:8px">' + fmt(g.monto) +
         (g.gasto_id ? ' <button type="button" class="btn ghost editar-gasto" data-gastoid="' + g.gasto_id + '" style="padding:2px 6px;font-size:12px;text-decoration:underline">Editar</button>' : '') +
