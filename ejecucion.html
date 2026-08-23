@@ -54,25 +54,37 @@
 </div>
 
 <script>
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
+  // --- Conexión a Supabase (reemplaza Apps Script) ---
+  const SUPABASE_URL = 'https://gdmgwbutazkrmzecncar.supabase.co/rest/v1';
+  const SUPABASE_KEY = 'sb_publishable_F9Om9ujffEDhsnfs7LmPWg_O1OticCa';
+
+  function sbHeaders(extra) {
+    return Object.assign({
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    }, extra || {});
+  }
+  function orNull(v) { return (v === '' || v === undefined) ? null : v; }
+
   const idPreseleccionado = new URLSearchParams(window.location.search).get('id');
 
   document.getElementById('fecha').valueAsDate = new Date();
 
-  fetch(APPS_SCRIPT_URL + '?accion=proyectos')
+  fetch(SUPABASE_URL + '/proyectos?select=id_proyecto,nombre_direccion,estado&order=nombre_direccion.asc', { headers: sbHeaders() })
     .then(function(r) { return r.json(); })
-    .then(function(data) {
+    .then(function(proyectos) {
       const sel = document.getElementById('proyecto');
       sel.innerHTML = '';
-      if (!data.ok || !data.proyectos.length) {
+      if (!proyectos || !proyectos.length) {
         sel.innerHTML = '<option value="">No hay proyectos cargados</option>';
         return;
       }
-      data.proyectos.forEach(function(p) {
+      proyectos.forEach(function(p) {
         const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.nombre + ' (' + p.estado + ')';
-        if (idPreseleccionado && p.id === idPreseleccionado) opt.selected = true;
+        opt.value = p.id_proyecto;
+        opt.textContent = p.nombre_direccion + ' (' + p.estado + ')';
+        if (idPreseleccionado && p.id_proyecto === idPreseleccionado) opt.selected = true;
         sel.appendChild(opt);
       });
     })
@@ -91,29 +103,28 @@
     const fields = {
       gasto_id: 'g-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       id_proyecto: document.getElementById('proyecto').value,
-      fecha: document.getElementById('fecha').value,
+      fecha: orNull(document.getElementById('fecha').value),
       rubro: document.getElementById('rubro').value,
-      sub_rubro: document.getElementById('sub_rubro').value,
+      sub_rubro: orNull(document.getElementById('sub_rubro').value),
       monto: document.getElementById('monto').value,
-      proveedor_gc: document.getElementById('proveedor_gc').value,
-      comprobante_nota: document.getElementById('comprobante_nota').value
+      proveedor_gc: orNull(document.getElementById('proveedor_gc').value),
+      comprobante_nota: orNull(document.getElementById('comprobante_nota').value)
     };
 
-    fetch(APPS_SCRIPT_URL, {
+    fetch(SUPABASE_URL + '/ejecucion', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ sheet: 'Ejecucion', fields: fields })
+      headers: sbHeaders({ Prefer: 'return=minimal' }),
+      body: JSON.stringify(fields)
     })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
+      .then(function(r) {
         btn.disabled = false;
-        if (data.ok) {
+        if (r.ok) {
           msg.textContent = 'Gasto guardado. Volviendo…';
           msg.className = 'ok';
           const destino = idPreseleccionado ? ('proyecto-editar.html?id=' + encodeURIComponent(idPreseleccionado)) : 'index.html';
           setTimeout(function() { window.location.href = destino; }, 700);
         } else {
-          msg.textContent = 'Error: ' + data.error;
+          msg.textContent = 'Error al guardar.';
           msg.className = 'err';
         }
       })
@@ -124,5 +135,7 @@
       });
   });
 </script>
+<p style="text-align:center;color:var(--text-muted, #9aa4b2);font-size:11px;padding:20px 0 30px">ejecucion.html · última actualización en GitHub: <span id="fecha-archivo"></span></p>
+<script>document.getElementById('fecha-archivo').textContent = document.lastModified;</script>
 </body>
 </html>
