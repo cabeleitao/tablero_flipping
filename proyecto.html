@@ -121,9 +121,6 @@
 
     <label for="gastos_cierre_venta">Gastos de cierre de venta — real</label>
     <input type="number" id="gastos_cierre_venta" step="0.01" min="0">
-
-    <label for="fecha_cancelacion_prestamo">Fecha de cancelación del préstamo</label>
-    <input type="date" id="fecha_cancelacion_prestamo">
     <p class="sub" style="margin:6px 0 0">Completá esta pestaña recién cuando el proyecto se vende de verdad.</p>
   </div>
 
@@ -134,7 +131,31 @@
 </div>
 
 <script>
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
+  // --- Conexión a Supabase (reemplaza Apps Script) ---
+  const SUPABASE_URL = 'https://gdmgwbutazkrmzecncar.supabase.co/rest/v1';
+  const SUPABASE_KEY = 'sb_publishable_F9Om9ujffEDhsnfs7LmPWg_O1OticCa';
+
+  function sbHeaders(extra) {
+    return Object.assign({
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    }, extra || {});
+  }
+  function sbGet(table, query) {
+    return fetch(SUPABASE_URL + '/' + table + (query ? '?' + query : ''), { headers: sbHeaders() })
+      .then(function(r) { return r.json(); });
+  }
+  function sbInsert(table, fieldsOrArray) {
+    return fetch(SUPABASE_URL + '/' + table, {
+      method: 'POST',
+      headers: sbHeaders({ Prefer: 'return=minimal' }),
+      body: JSON.stringify(fieldsOrArray)
+    }).then(function(r) { return { ok: r.ok }; });
+  }
+  // Postgres rompe si mandamos "" en un campo numérico o de fecha — lo convertimos a null.
+  function orNull(v) { return (v === '' || v === undefined) ? null : v; }
+
   let activeTab = 'nuevo';
   let socios = [
     { nombre: 'Fede', pct: 50 },
@@ -205,19 +226,18 @@
   document.getElementById('campos-terceros').style.display = 'none';
 
   function cargarProyectos(selectId) {
-    fetch(APPS_SCRIPT_URL + '?accion=proyectos')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
+    sbGet('proyectos', 'select=id_proyecto,nombre_direccion,estado&order=nombre_direccion.asc')
+      .then(function(proyectos) {
         const sel = document.getElementById(selectId);
         sel.innerHTML = '';
-        if (!data.ok || !data.proyectos.length) {
+        if (!proyectos || !proyectos.length) {
           sel.innerHTML = '<option value="">No hay proyectos cargados</option>';
           return;
         }
-        data.proyectos.forEach(function(p) {
+        proyectos.forEach(function(p) {
           const opt = document.createElement('option');
-          opt.value = p.id;
-          opt.textContent = p.nombre + ' (' + p.estado + ')';
+          opt.value = p.id_proyecto;
+          opt.textContent = p.nombre_direccion + ' (' + p.estado + ')';
           sel.appendChild(opt);
         });
       })
@@ -236,22 +256,6 @@
       .replace(/(^-|-$)/g, '')
       .slice(0, 24);
     return slug + '-' + Date.now().toString(36);
-  }
-
-  function postFila(sheet, fields) {
-    return fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ sheet: sheet, fields: fields })
-    }).then(function(r) { return r.json(); });
-  }
-
-  function postJson(payload) {
-    return fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    }).then(function(r) { return r.json(); });
   }
 
   function volverAlPanel(msgEl, texto) {
@@ -274,20 +278,23 @@
         id_proyecto: idNuevo,
         nombre_direccion: document.getElementById('nombre_direccion').value,
         pais: document.getElementById('pais').value,
-        fecha_compra: document.getElementById('fecha_compra').value,
+        fecha_compra: orNull(document.getElementById('fecha_compra').value),
         estado: document.getElementById('estado').value,
-        fecha_venta_estimada: document.getElementById('fecha_venta_estimada').value,
-        precio_venta_estimado: document.getElementById('precio_venta_estimado').value
+        fecha_venta_estimada: orNull(document.getElementById('fecha_venta_estimada').value),
+        precio_venta_estimado: orNull(document.getElementById('precio_venta_estimado').value)
       };
       const presupuesto = [
-        { id_proyecto: idNuevo, rubro: 'compra', sub_rubro: '', monto_presupuestado: document.getElementById('presupuesto_compra').value || 0 },
-        { id_proyecto: idNuevo, rubro: 'remodelacion', sub_rubro: '', monto_presupuestado: document.getElementById('presupuesto_remodelacion').value || 0 },
-        { id_proyecto: idNuevo, rubro: 'cierre_venta', sub_rubro: '', monto_presupuestado: document.getElementById('presupuesto_cierre').value || 0 }
+        { id_proyecto: idNuevo, rubro: 'compra', sub_rubro: null, monto_presupuestado: document.getElementById('presupuesto_compra').value || 0 },
+        { id_proyecto: idNuevo, rubro: 'remodelacion', sub_rubro: null, monto_presupuestado: document.getElementById('presupuesto_remodelacion').value || 0 },
+        { id_proyecto: idNuevo, rubro: 'cierre_venta', sub_rubro: null, monto_presupuestado: document.getElementById('presupuesto_cierre').value || 0 }
       ];
-      postJson({ modo: 'nuevo_proyecto', proyecto: proyecto, presupuesto: presupuesto }).then(function(data) {
+      sbInsert('proyectos', proyecto).then(function(data) {
+        if (!data.ok) { btn.disabled = false; msg.textContent = 'Error al crear el proyecto.'; msg.className = 'err'; return; }
+        return sbInsert('presupuesto', presupuesto);
+      }).then(function(data) {
         btn.disabled = false;
-        if (data.ok) { volverAlPanel(msg, 'Proyecto creado. Volviendo al panel…'); }
-        else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+        if (data && data.ok) { volverAlPanel(msg, 'Proyecto creado. Volviendo al panel…'); }
+        else if (data) { msg.textContent = 'El proyecto se creó, pero hubo un error con el presupuesto.'; msg.className = 'err'; }
       }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
 
     } else if (activeTab === 'financiamiento') {
@@ -302,52 +309,49 @@
           return;
         }
         const montoTotal = parseFloat(document.getElementById('monto_propio_total').value) || 0;
-        const fecha = document.getElementById('fecha_desembolso_propio').value;
+        const fecha = orNull(document.getElementById('fecha_desembolso_propio').value);
         btn.disabled = true;
 
-        const envios = socios.map(function(s) {
-          return postFila('Movimientos', {
-            mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        const filas = socios.map(function(s) {
+          return {
+            mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 4),
             actor: s.nombre,
             tipo_actor: 'propio',
             id_proyecto: idProyecto,
             tipo_movimiento: 'aporte_proyecto',
             monto: (montoTotal * (parseFloat(s.pct) || 0) / 100).toFixed(2),
             fecha: fecha,
-            tasa_anual: '',
-            penalidad_prepago: '',
-            retorno_pactado: '',
-            nota: ''
-          });
+            tasa_anual: null,
+            penalidad_prepago: null,
+            retorno_pactado: null,
+            nota: null
+          };
         });
 
-        Promise.all(envios).then(function(resultados) {
-          const fallo = resultados.find(function(r) { return !r.ok; });
+        sbInsert('movimientos', filas).then(function(data) {
           btn.disabled = false;
-          if (fallo) { msg.textContent = 'Error: ' + fallo.error; msg.className = 'err'; return; }
+          if (!data.ok) { msg.textContent = 'Error al guardar.'; msg.className = 'err'; return; }
           volverAlPanel(msg, 'Guardado (' + socios.length + ' socios). Volviendo al panel…');
         }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
 
       } else {
         btn.disabled = true;
-        const monto = document.getElementById('monto_fin').value;
-        const fecha = document.getElementById('fecha_desembolso').value;
         const fields = {
           mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
           actor: document.getElementById('nombre_prestamista_inversor').value,
           tipo_actor: tipo,
           id_proyecto: idProyecto,
           tipo_movimiento: 'aporte_proyecto',
-          monto: monto,
-          fecha: fecha,
-          tasa_anual: document.getElementById('tasa_anual').value,
-          penalidad_prepago: document.getElementById('penalidad_prepago').value,
-          retorno_pactado: document.getElementById('retorno_pactado').value,
-          nota: ''
+          monto: document.getElementById('monto_fin').value,
+          fecha: orNull(document.getElementById('fecha_desembolso').value),
+          tasa_anual: orNull(document.getElementById('tasa_anual').value),
+          penalidad_prepago: document.getElementById('penalidad_prepago').value || null,
+          retorno_pactado: document.getElementById('retorno_pactado').value || null,
+          nota: null
         };
-        postFila('Movimientos', fields).then(function(data) {
+        sbInsert('movimientos', fields).then(function(data) {
           btn.disabled = false;
-          if (!data.ok) { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; return; }
+          if (!data.ok) { msg.textContent = 'Error al guardar.'; msg.className = 'err'; return; }
           volverAlPanel(msg, 'Guardado. Volviendo al panel…');
         }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
       }
@@ -356,18 +360,19 @@
       btn.disabled = true;
       const fields = {
         id_proyecto: document.getElementById('proyecto_cierre').value,
-        fecha_venta: document.getElementById('fecha_venta').value,
-        precio_venta: document.getElementById('precio_venta').value,
-        gastos_cierre_venta: document.getElementById('gastos_cierre_venta').value,
-        fecha_cancelacion_prestamo: document.getElementById('fecha_cancelacion_prestamo').value
+        fecha_venta: orNull(document.getElementById('fecha_venta').value),
+        precio_venta: orNull(document.getElementById('precio_venta').value),
+        gastos_cierre_venta: orNull(document.getElementById('gastos_cierre_venta').value)
       };
-      postFila('Cierre_venta', fields).then(function(data) {
+      sbInsert('cierre_venta', fields).then(function(data) {
         btn.disabled = false;
         if (data.ok) { volverAlPanel(msg, 'Guardado. Volviendo al panel…'); }
-        else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
+        else { msg.textContent = 'Error al guardar (¿ya existía un cierre para este proyecto?).'; msg.className = 'err'; }
       }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     }
   });
 </script>
+<p style="text-align:center;color:var(--text-muted, #9aa4b2);font-size:11px;padding:20px 0 30px">proyecto.html · última actualización en GitHub: <span id="fecha-archivo"></span></p>
+<script>document.getElementById('fecha-archivo').textContent = document.lastModified;</script>
 </body>
 </html>
