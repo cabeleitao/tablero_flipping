@@ -240,16 +240,48 @@
 </div>
 
 <script>
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
+  // --- Conexión a Supabase (reemplaza Apps Script) ---
+  const SUPABASE_URL = 'https://gdmgwbutazkrmzecncar.supabase.co/rest/v1';
+  const SUPABASE_KEY = 'sb_publishable_F9Om9ujffEDhsnfs7LmPWg_O1OticCa';
+
+  function sbHeaders(extra) {
+    return Object.assign({
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    }, extra || {});
+  }
+  function sbGet(table, query) {
+    return fetch(SUPABASE_URL + '/' + table + (query ? '?' + query : ''), { headers: sbHeaders() })
+      .then(function(r) { return r.json(); });
+  }
+  // Postgres rompe si mandamos "" en un campo numérico o de fecha — lo convertimos a null.
+  function orNull(v) { return (v === '' || v === undefined) ? null : v; }
+  function sanitizeFields(fields) {
+    const out = {};
+    Object.keys(fields).forEach(function(k) { out[k] = orNull(fields[k]); });
+    return out;
+  }
+
   const params = new URLSearchParams(window.location.search);
   const idProyecto = params.get('id');
   let actoresGlobal = [];
 
   function cargarActoresGlobal() {
-    return fetch(APPS_SCRIPT_URL + '?accion=dashboard')
-      .then(function(r) { return r.json(); })
-      .then(function(res) { if (res.ok) actoresGlobal = res.data.actores_resumen || []; })
-      .catch(function() {});
+    return sbGet('movimientos', 'select=actor,tipo_actor,tipo_movimiento,monto')
+      .then(function(movs) {
+        const saldoPorActor = {}, tipoActorPorActor = {};
+        (movs || []).forEach(function(m) {
+          const monto = parseFloat(m.monto) || 0;
+          const signo = (m.tipo_movimiento === 'aporte_externo' || m.tipo_movimiento === 'devolucion_proyecto') ? 1
+            : (m.tipo_movimiento === 'aporte_proyecto' || m.tipo_movimiento === 'retiro') ? -1 : 0;
+          saldoPorActor[m.actor] = (saldoPorActor[m.actor] || 0) + signo * monto;
+          if (m.tipo_actor) tipoActorPorActor[m.actor] = m.tipo_actor;
+        });
+        actoresGlobal = Object.keys(saldoPorActor).filter(function(a) { return a; }).map(function(a) {
+          return { actor: a, saldo: saldoPorActor[a], tipo_actor: tipoActorPorActor[a] || 'propio' };
+        });
+      }).catch(function() {});
   }
 
   if (!idProyecto) {
@@ -325,113 +357,179 @@
   });
 
   function postFila(payload) {
-    return fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    }).then(function(r) { return r.json(); });
+    const tabla = payload.sheet ? payload.sheet.toLowerCase() : null;
+
+    if (payload.modo === 'eliminar_proyecto') {
+      return fetch(SUPABASE_URL + '/proyectos?id_proyecto=eq.' + encodeURIComponent(payload.id_proyecto), {
+        method: 'DELETE', headers: sbHeaders({ Prefer: 'return=minimal' })
+      }).then(function(r) { return { ok: r.ok }; });
+    }
+
+    if (payload.modo === 'eliminar_actor') {
+      return fetch(SUPABASE_URL + '/movimientos?actor=eq.' + encodeURIComponent(payload.actor), {
+        method: 'DELETE', headers: sbHeaders({ Prefer: 'return=minimal' })
+      }).then(function(r) { return { ok: r.ok }; });
+    }
+
+    if (payload.modo === 'eliminar_fila') {
+      return fetch(SUPABASE_URL + '/' + tabla + '?' + payload.campo + '=eq.' + encodeURIComponent(payload.valor), {
+        method: 'DELETE', headers: sbHeaders({ Prefer: 'return=minimal' })
+      }).then(function(r) { return { ok: r.ok }; });
+    }
+
+    if (payload.modo === 'actualizar_por_campo') {
+      return fetch(SUPABASE_URL + '/' + tabla + '?' + payload.campo + '=eq.' + encodeURIComponent(payload.valor), {
+        method: 'PATCH', headers: sbHeaders({ Prefer: 'return=minimal' }),
+        body: JSON.stringify(sanitizeFields(payload.fields))
+      }).then(function(r) { return { ok: r.ok }; });
+    }
+
+    if (payload.modo === 'actualizar') {
+      // Upsert por id_proyecto — sirve tanto para Proyectos como para Cierre_venta (las dos usan id_proyecto como clave).
+      const fields = sanitizeFields(payload.fields);
+      fields.id_proyecto = payload.id_proyecto;
+      return fetch(SUPABASE_URL + '/' + tabla + '?on_conflict=id_proyecto', {
+        method: 'POST',
+        headers: sbHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
+        body: JSON.stringify(fields)
+      }).then(function(r) { return { ok: r.ok }; });
+    }
+
+    if (payload.modo === 'actualizar_presupuesto') {
+      const rubros = Object.keys(payload.valores);
+      return Promise.all(rubros.map(function(rubro) {
+        return fetch(SUPABASE_URL + '/presupuesto?id_proyecto=eq.' + encodeURIComponent(payload.id_proyecto) + '&rubro=eq.' + rubro + '&sub_rubro=is.null', {
+          method: 'DELETE', headers: sbHeaders({ Prefer: 'return=minimal' })
+        }).then(function() {
+          return fetch(SUPABASE_URL + '/presupuesto', {
+            method: 'POST', headers: sbHeaders({ Prefer: 'return=minimal' }),
+            body: JSON.stringify({ id_proyecto: payload.id_proyecto, rubro: rubro, sub_rubro: null, monto_presupuestado: payload.valores[rubro] })
+          });
+        });
+      })).then(function(rs) { return { ok: rs.every(function(r) { return r.ok; }) }; });
+    }
+
+    // Default: insertar fila nueva.
+    const body = Array.isArray(payload.fields) ? payload.fields.map(sanitizeFields) : sanitizeFields(payload.fields);
+    return fetch(SUPABASE_URL + '/' + tabla, {
+      method: 'POST', headers: sbHeaders({ Prefer: 'return=minimal' }),
+      body: JSON.stringify(body)
+    }).then(function(r) { return { ok: r.ok }; });
   }
 
   function cargarDetalle() {
-    fetch(APPS_SCRIPT_URL + '?accion=detalle&id=' + encodeURIComponent(idProyecto))
-      .then(function(r) { return r.json(); })
-      .then(function(res) {
-        if (!res.ok || !res.data.proyecto) {
-          document.getElementById('titulo').textContent = 'No se encontró el proyecto';
-          return;
-        }
-        const p = res.data.proyecto;
-        document.getElementById('titulo').textContent = p.nombre_direccion || idProyecto;
-        document.getElementById('subtitulo').textContent = (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ');
-        document.getElementById('btn-reabrir').style.display = p.estado === 'vendido' ? 'inline-flex' : 'none';
-        document.getElementById('link-gasto').style.display = p.estado === 'vendido' ? 'none' : 'inline-flex';
-        document.getElementById('nombre_direccion').value = p.nombre_direccion || '';
-        document.getElementById('pais').value = p.pais || 'ARG';
-        document.getElementById('fecha_compra').value = p.fecha_compra ? p.fecha_compra.split('T')[0] : '';
-        document.getElementById('estado').value = p.estado || 'en_curso';
-        document.getElementById('fecha_venta_estimada').value = p.fecha_venta_estimada ? p.fecha_venta_estimada.split('T')[0] : '';
-        document.getElementById('precio_venta_estimado').value = p.precio_venta_estimado || '';
+    Promise.all([
+      sbGet('proyectos', 'id_proyecto=eq.' + encodeURIComponent(idProyecto)),
+      sbGet('movimientos', 'id_proyecto=eq.' + encodeURIComponent(idProyecto)),
+      sbGet('ejecucion', 'id_proyecto=eq.' + encodeURIComponent(idProyecto)),
+      sbGet('presupuesto', 'id_proyecto=eq.' + encodeURIComponent(idProyecto)),
+      sbGet('cierre_venta', 'id_proyecto=eq.' + encodeURIComponent(idProyecto))
+    ]).then(function(res) {
+      const proyectos = res[0] || [];
+      if (!proyectos.length) {
+        document.getElementById('titulo').textContent = 'No se encontró el proyecto';
+        return;
+      }
+      const data = {
+        proyecto: proyectos[0],
+        movimientos: res[1] || [],
+        ejecucion: res[2] || [],
+        presupuesto: res[3] || [],
+        cierre: (res[4] && res[4][0]) || null
+      };
 
-        const presupuestoPorRubro = {};
-        (res.data.presupuesto || []).forEach(function(item) {
-          if (!item.sub_rubro) presupuestoPorRubro[item.rubro] = item.monto_presupuestado;
-        });
-        document.getElementById('presupuesto_compra').value = presupuestoPorRubro.compra || '';
-        document.getElementById('presupuesto_remodelacion').value = presupuestoPorRubro.remodelacion || '';
-        document.getElementById('presupuesto_cierre').value = presupuestoPorRubro.cierre_venta || '';
+      const p = data.proyecto;
+      document.getElementById('titulo').textContent = p.nombre_direccion || idProyecto;
+      document.getElementById('subtitulo').textContent = (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ');
+      document.getElementById('btn-reabrir').style.display = p.estado === 'vendido' ? 'inline-flex' : 'none';
+      document.getElementById('link-gasto').style.display = p.estado === 'vendido' ? 'none' : 'inline-flex';
+      document.getElementById('nombre_direccion').value = p.nombre_direccion || '';
+      document.getElementById('pais').value = p.pais || 'ARG';
+      document.getElementById('fecha_compra').value = p.fecha_compra ? p.fecha_compra.split('T')[0] : '';
+      document.getElementById('estado').value = p.estado || 'en_curso';
+      document.getElementById('fecha_venta_estimada').value = p.fecha_venta_estimada ? p.fecha_venta_estimada.split('T')[0] : '';
+      document.getElementById('precio_venta_estimado').value = p.precio_venta_estimado || '';
 
-        const c = res.data.cierre;
-        if (c) {
-          document.getElementById('fecha_venta').value = c.fecha_venta ? c.fecha_venta.split('T')[0] : '';
-          document.getElementById('precio_venta').value = c.precio_venta || '';
-          document.getElementById('gastos_cierre_venta').value = c.gastos_cierre_venta || '';
-        }
-
-        const histCont = document.getElementById('hist-financiamiento');
-        const mov = res.data.movimientos || [];
-        movimientosActual = mov;
-        if (!mov.length) {
-          histCont.innerHTML = '<p class="sub" style="margin:0">Sin movimientos cargados todavía.</p>';
-        } else {
-          histCont.innerHTML = '';
-          mov.slice().sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).forEach(function(m) {
-            const esAporte = m.tipo_movimiento === 'aporte_proyecto';
-            const row = document.createElement('div');
-            row.className = 'hist-row';
-            row.innerHTML =
-              '<span><span class="tag" style="background:' + (esAporte ? 'var(--accent-soft)' : '#e6f4ea') + ';color:' + (esAporte ? 'var(--accent)' : 'var(--success)') + '">' +
-                (esAporte ? 'FINANCIAMIENTO' : 'RECUPERO') + '</span>' + (m.actor || '') + ' · ' + (m.tipo_actor || '') + '</span>' +
-              '<span style="display:flex;align-items:center;gap:10px">' + fmt(m.monto) + (m.tasa_anual ? ' · ' + m.tasa_anual + '%' : '') +
-              (m.mov_id ? ' <button type="button" class="btn ghost editar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' : '') +
-              (m.mov_id ? ' <button type="button" class="btn ghost eliminar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline;color:var(--danger)">Eliminar</button>' : '') +
-              '</span>';
-            histCont.appendChild(row);
-          });
-          histCont.querySelectorAll('.editar-fin').forEach(function(btn) {
-            btn.addEventListener('click', function() { abrirEdicionFinanciamiento(btn.dataset.movid); });
-          });
-          histCont.querySelectorAll('.eliminar-fin').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-              if (!confirm('¿Eliminar este movimiento? No se puede deshacer.')) return;
-              postFila({ modo: 'eliminar_fila', sheet: 'Movimientos', campo: 'mov_id', valor: btn.dataset.movid })
-                .then(function(data) {
-                  if (data.ok) { cargarActoresGlobal().then(cargarDetalle); }
-                  else { alert('Error: ' + data.error); }
-                }).catch(function() { alert('No se pudo conectar.'); });
-            });
-          });
-        }
-
-        const financiado = mov.reduce(function(a, m) {
-          return a + (m.tipo_movimiento === 'aporte_proyecto' ? (parseFloat(m.monto) || 0) : -(parseFloat(m.monto) || 0));
-        }, 0);
-        const ejecucionArr = res.data.ejecucion || [];
-        const necesario = ejecucionArr
-          .filter(function(e) { return e.rubro === 'compra' || e.rubro === 'remodelacion'; })
-          .reduce(function(a, e) { return a + (parseFloat(e.monto) || 0); }, 0);
-        const resumen = document.getElementById('resumen-financiamiento');
-        if (p.estado === 'vendido') {
-          if (Math.abs(financiado) < 0.5) {
-            resumen.textContent = 'Proyecto vendido y recupero completo — no quedan movimientos pendientes.';
-            resumen.style.color = 'var(--success)';
-          } else {
-            resumen.textContent = 'Proyecto vendido — usá "Registrar recupero" para devolverle a cada actor lo que le corresponde.';
-            resumen.style.color = 'var(--text-secondary)';
-          }
-        } else if (necesario > 0) {
-          resumen.textContent = 'Financiado neto: ' + fmt(financiado) + ' de ' + fmt(necesario) + ' necesario (compra + remodelación ejecutadas)';
-          resumen.style.color = financiado < necesario ? 'var(--danger)' : 'var(--text-secondary)';
-        } else {
-          resumen.textContent = '';
-        }
-
-        document.getElementById('contenido').style.display = 'block';
-        renderResumen(res.data.presupuesto || [], res.data.ejecucion || [], mov, res.data.cierre, p);
-        inicializarRecupero(c, mov);
-      })
-      .catch(function() {
-        document.getElementById('titulo').textContent = 'No se pudo conectar';
+      const presupuestoPorRubro = {};
+      (data.presupuesto || []).forEach(function(item) {
+        if (!item.sub_rubro) presupuestoPorRubro[item.rubro] = item.monto_presupuestado;
       });
+      document.getElementById('presupuesto_compra').value = presupuestoPorRubro.compra || '';
+      document.getElementById('presupuesto_remodelacion').value = presupuestoPorRubro.remodelacion || '';
+      document.getElementById('presupuesto_cierre').value = presupuestoPorRubro.cierre_venta || '';
+
+      const c = data.cierre;
+      if (c) {
+        document.getElementById('fecha_venta').value = c.fecha_venta ? c.fecha_venta.split('T')[0] : '';
+        document.getElementById('precio_venta').value = c.precio_venta || '';
+        document.getElementById('gastos_cierre_venta').value = c.gastos_cierre_venta || '';
+      }
+
+      const histCont = document.getElementById('hist-financiamiento');
+      const mov = data.movimientos || [];
+      movimientosActual = mov;
+      if (!mov.length) {
+        histCont.innerHTML = '<p class="sub" style="margin:0">Sin movimientos cargados todavía.</p>';
+      } else {
+        histCont.innerHTML = '';
+        mov.slice().sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).forEach(function(m) {
+          const esAporte = m.tipo_movimiento === 'aporte_proyecto';
+          const row = document.createElement('div');
+          row.className = 'hist-row';
+          row.innerHTML =
+            '<span><span class="tag" style="background:' + (esAporte ? 'var(--accent-soft)' : '#e6f4ea') + ';color:' + (esAporte ? 'var(--accent)' : 'var(--success)') + '">' +
+              (esAporte ? 'FINANCIAMIENTO' : 'RECUPERO') + '</span>' + (m.actor || '') + ' · ' + (m.tipo_actor || '') + '</span>' +
+            '<span style="display:flex;align-items:center;gap:10px">' + fmt(m.monto) + (m.tasa_anual ? ' · ' + m.tasa_anual + '%' : '') +
+            (m.mov_id ? ' <button type="button" class="btn ghost editar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' : '') +
+            (m.mov_id ? ' <button type="button" class="btn ghost eliminar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline;color:var(--danger)">Eliminar</button>' : '') +
+            '</span>';
+          histCont.appendChild(row);
+        });
+        histCont.querySelectorAll('.editar-fin').forEach(function(btn) {
+          btn.addEventListener('click', function() { abrirEdicionFinanciamiento(btn.dataset.movid); });
+        });
+        histCont.querySelectorAll('.eliminar-fin').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            if (!confirm('¿Eliminar este movimiento? No se puede deshacer.')) return;
+            postFila({ modo: 'eliminar_fila', sheet: 'Movimientos', campo: 'mov_id', valor: btn.dataset.movid })
+              .then(function(data) {
+                if (data.ok) { cargarActoresGlobal().then(cargarDetalle); }
+                else { alert('Error al eliminar.'); }
+              }).catch(function() { alert('No se pudo conectar.'); });
+          });
+        });
+      }
+
+      const financiado = mov.reduce(function(a, m) {
+        return a + (m.tipo_movimiento === 'aporte_proyecto' ? (parseFloat(m.monto) || 0) : -(parseFloat(m.monto) || 0));
+      }, 0);
+      const ejecucionArr = data.ejecucion || [];
+      const necesario = ejecucionArr
+        .filter(function(e) { return e.rubro === 'compra' || e.rubro === 'remodelacion'; })
+        .reduce(function(a, e) { return a + (parseFloat(e.monto) || 0); }, 0);
+      const resumen = document.getElementById('resumen-financiamiento');
+      if (p.estado === 'vendido') {
+        if (Math.abs(financiado) < 0.5) {
+          resumen.textContent = 'Proyecto vendido y recupero completo — no quedan movimientos pendientes.';
+          resumen.style.color = 'var(--success)';
+        } else {
+          resumen.textContent = 'Proyecto vendido — usá "Registrar recupero" para devolverle a cada actor lo que le corresponde.';
+          resumen.style.color = 'var(--text-secondary)';
+        }
+      } else if (necesario > 0) {
+        resumen.textContent = 'Financiado neto: ' + fmt(financiado) + ' de ' + fmt(necesario) + ' necesario (compra + remodelación ejecutadas)';
+        resumen.style.color = financiado < necesario ? 'var(--danger)' : 'var(--text-secondary)';
+      } else {
+        resumen.textContent = '';
+      }
+
+      document.getElementById('contenido').style.display = 'block';
+      renderResumen(data.presupuesto || [], data.ejecucion || [], mov, data.cierre, p);
+      inicializarRecupero(c, mov);
+    })
+    .catch(function() {
+      document.getElementById('titulo').textContent = 'No se pudo conectar';
+    });
   }
 
   function fmt(n) { return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 }); }
@@ -1195,5 +1293,7 @@
     }).catch(function() { alert('No se pudo conectar.'); btn.disabled = false; btn.textContent = 'Sí, eliminar'; });
   });
 </script>
+<p style="text-align:center;color:var(--text-muted, #9aa4b2);font-size:11px;padding:20px 0 30px">proyecto-editar.html · última actualización en GitHub: <span id="fecha-archivo"></span></p>
+<script>document.getElementById('fecha-archivo').textContent = document.lastModified;</script>
 </body>
 </html>
