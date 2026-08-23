@@ -49,7 +49,34 @@
 </div>
 
 <script>
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxtByIeeZt4ohelM1HOtzqVGj4dal4sgVri4-2vVRS3F1yWiEX81wh8y8cBrNBirc8x/exec';
+  // --- Conexión a Supabase (reemplaza Apps Script) ---
+  const SUPABASE_URL = 'https://gdmgwbutazkrmzecncar.supabase.co/rest/v1';
+  const SUPABASE_KEY = 'sb_publishable_F9Om9ujffEDhsnfs7LmPWg_O1OticCa';
+
+  function sbHeaders(extra) {
+    return Object.assign({
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    }, extra || {});
+  }
+  function sbGet(table, query) {
+    return fetch(SUPABASE_URL + '/' + table + (query ? '?' + query : ''), { headers: sbHeaders() })
+      .then(function(r) { return r.json(); });
+  }
+  function sbInsert(table, fields) {
+    return fetch(SUPABASE_URL + '/' + table, {
+      method: 'POST',
+      headers: sbHeaders({ Prefer: 'return=minimal' }),
+      body: JSON.stringify(fields)
+    }).then(function(r) { return { ok: r.ok }; });
+  }
+  function sbDelete(table, query) {
+    return fetch(SUPABASE_URL + '/' + table + '?' + query, {
+      method: 'DELETE',
+      headers: sbHeaders({ Prefer: 'return=minimal' })
+    }).then(function(r) { return { ok: r.ok }; });
+  }
 
   function fmt(n) {
     return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
@@ -59,67 +86,197 @@
 
   let ultimoDashboard = null;
 
-  fetch(APPS_SCRIPT_URL + '?accion=dashboard')
-    .then(function(r) { return r.json(); })
-    .then(function(res) {
-      if (!res.ok) {
-        document.getElementById('lista-proyectos').innerHTML = '<p class="sub" style="margin:0">Error: ' + res.error + '</p>';
-        return;
+  // --- Réplica en el navegador de lo que antes calculaba Apps Script (getDashboardData) ---
+  function computeDashboard(proyectosData, ejecucionData, movimientosData, cierreData) {
+    const cierreByProyecto = {};
+    cierreData.forEach(function(c) { cierreByProyecto[c.id_proyecto] = c; });
+
+    const vendidoPorId = {};
+    proyectosData.forEach(function(p) { vendidoPorId[p.id_proyecto] = p.estado === 'vendido'; });
+
+    const ejecutadoByProyecto = {};
+    ejecucionData.forEach(function(e) {
+      if (e.rubro === 'compra' || e.rubro === 'remodelacion') {
+        ejecutadoByProyecto[e.id_proyecto] = (ejecutadoByProyecto[e.id_proyecto] || 0) + (parseFloat(e.monto) || 0);
       }
-      const d = res.data;
-      ultimoDashboard = d;
+    });
 
-      const kg = document.getElementById('kpi-ganancia');
-      kg.textContent = fmt(d.ganancia_anio);
-      document.getElementById('kpi-ganancia-card').className = 'kpi ' + (d.ganancia_anio >= 0 ? 'pastel-green' : 'pastel-red');
+    const valorEstimadoByProyecto = {};
+    proyectosData.forEach(function(p) { valorEstimadoByProyecto[p.id_proyecto] = parseFloat(p.precio_venta_estimado) || 0; });
 
-      document.getElementById('kpi-activos').textContent = fmt(d.activos);
+    const nombrePorId = {};
+    proyectosData.forEach(function(p) { nombrePorId[p.id_proyecto] = p.nombre_direccion; });
 
-      const r = d.financiamiento_resumen || { propio: 0, prestamo: 0, inversor: 0 };
-      const totalFinanciacion = (r.propio || 0) + (r.prestamo || 0) + (r.inversor || 0);
-      document.getElementById('kpi-financiacion').textContent = fmt(totalFinanciacion);
+    const saldoPorActor = {};
+    const tipoActorPorActor = {};
+    const netoPorProyectoActor = {};
+    const netoPorProyectoActorTodos = {};
 
-      const cont = document.getElementById('lista-proyectos');
-      if (!d.proyectos_activos.length) {
-        cont.innerHTML = '<p class="sub" style="margin:0">No hay proyectos activos todavía.</p>';
+    movimientosData.forEach(function(m) {
+      const monto = parseFloat(m.monto) || 0;
+      const signo = (m.tipo_movimiento === 'aporte_externo' || m.tipo_movimiento === 'devolucion_proyecto') ? 1
+        : (m.tipo_movimiento === 'aporte_proyecto' || m.tipo_movimiento === 'retiro') ? -1 : 0;
+      saldoPorActor[m.actor] = (saldoPorActor[m.actor] || 0) + signo * monto;
+      if (m.tipo_actor) tipoActorPorActor[m.actor] = m.tipo_actor;
+
+      if (m.id_proyecto) {
+        const key = m.id_proyecto + '|' + m.actor + '|' + m.tipo_actor;
+        const signoProyecto = m.tipo_movimiento === 'aporte_proyecto' ? 1 : (m.tipo_movimiento === 'devolucion_proyecto' ? -1 : 0);
+        netoPorProyectoActorTodos[key] = (netoPorProyectoActorTodos[key] || 0) + signoProyecto * monto;
+        if (!vendidoPorId[m.id_proyecto]) {
+          netoPorProyectoActor[key] = (netoPorProyectoActor[key] || 0) + signoProyecto * monto;
+        }
+      }
+    });
+
+    const recuperosPendientes = [];
+    Object.keys(netoPorProyectoActorTodos).forEach(function(key) {
+      const neto = netoPorProyectoActorTodos[key];
+      if (neto < 0.01) return;
+      const partes = key.split('|');
+      const idProyecto = partes[0];
+      if (!vendidoPorId[idProyecto]) return;
+      recuperosPendientes.push({ id_proyecto: idProyecto, proyecto: nombrePorId[idProyecto] || idProyecto, actor: partes[1], tipo_actor: partes[2], monto: neto });
+    });
+
+    const financiadoByProyecto = {};
+    const prestamoByProyecto = {};
+    const pasivosDetalle = [];
+    Object.keys(netoPorProyectoActor).forEach(function(key) {
+      const neto = netoPorProyectoActor[key];
+      if (Math.abs(neto) < 0.01) return;
+      const partes = key.split('|');
+      const idProyecto = partes[0], actor = partes[1], tipoActor = partes[2];
+      financiadoByProyecto[idProyecto] = (financiadoByProyecto[idProyecto] || 0) + neto;
+      if (tipoActor === 'prestamo') {
+        prestamoByProyecto[idProyecto] = (prestamoByProyecto[idProyecto] || 0) + neto;
+        pasivosDetalle.push({ proyecto: nombrePorId[idProyecto] || idProyecto, nombre: actor, monto: neto, tasa_anual: '' });
+      }
+    });
+
+    const actoresResumenTmp = Object.keys(saldoPorActor)
+      .filter(function(a) { return a; })
+      .map(function(a) { return { actor: a, saldo: saldoPorActor[a], tipo_actor: tipoActorPorActor[a] || 'propio' }; });
+    const financiamientoResumen = { propio: 0, prestamo: 0, inversor: 0 };
+    const financiamientoDetalle = [];
+    actoresResumenTmp.forEach(function(a) {
+      if (financiamientoResumen[a.tipo_actor] !== undefined) financiamientoResumen[a.tipo_actor] += a.saldo;
+      financiamientoDetalle.push({ tipo_fuente: a.tipo_actor, nombre: a.actor, monto: a.saldo });
+    });
+
+    const anioActual = new Date().getFullYear();
+    let gananciaAnio = 0, activos = 0, pasivos = 0;
+    const proyectosActivos = [];
+    const proyectosVendidos = [];
+
+    proyectosData.forEach(function(p) {
+      const ejecutado = ejecutadoByProyecto[p.id_proyecto] || 0;
+      const financiado = financiadoByProyecto[p.id_proyecto] || 0;
+      const esVendido = p.estado === 'vendido';
+      const cierre = cierreByProyecto[p.id_proyecto];
+
+      if (esVendido) {
+        const precioVenta = cierre ? (parseFloat(cierre.precio_venta) || 0) : 0;
+        const gastosCierre = cierre ? (parseFloat(cierre.gastos_cierre_venta) || 0) : 0;
+        const ganancia = precioVenta - ejecutado - gastosCierre;
+        if (cierre && cierre.fecha_venta) {
+          const anioVenta = new Date(cierre.fecha_venta).getFullYear();
+          if (anioVenta === anioActual) gananciaAnio += ganancia;
+        }
+        proyectosVendidos.push({ id: p.id_proyecto, nombre: p.nombre_direccion, pais: p.pais, fecha_venta: cierre ? cierre.fecha_venta : '', precio_venta: precioVenta, ejecutado: ejecutado, ganancia: ganancia });
       } else {
-        cont.innerHTML = '';
-        d.proyectos_activos.forEach(function(p) {
-          const a = document.createElement('a');
-          a.className = 'proyecto-card';
-          a.href = 'proyecto-editar.html?id=' + encodeURIComponent(p.id);
-          a.innerHTML =
-            '<div class="fila">' +
-              '<div><div class="nombre">' + (p.nombre || p.id) + '</div>' +
-              '<div class="meta">' + (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ') + '</div></div>' +
-              '<div class="fila"><div class="monto">' + fmt(p.valor_estimado) + '</div><span class="arrow">›</span></div>' +
-            '</div>';
-          cont.appendChild(a);
-        });
+        const valorEstimado = valorEstimadoByProyecto[p.id_proyecto] || 0;
+        activos += valorEstimado;
+        pasivos += (prestamoByProyecto[p.id_proyecto] || 0);
+        proyectosActivos.push({ id: p.id_proyecto, nombre: p.nombre_direccion, pais: p.pais, estado: p.estado, fecha_compra: p.fecha_compra, ejecutado: ejecutado, financiado: financiado, valor_estimado: valorEstimado });
       }
+    });
 
-      const vendidos = d.proyectos_vendidos || [];
-      if (vendidos.length) {
-        document.getElementById('card-vendidos').style.display = 'block';
-        const contV = document.getElementById('lista-vendidos');
-        contV.innerHTML = '';
-        vendidos.forEach(function(p) {
-          const a = document.createElement('a');
-          a.className = 'proyecto-card';
-          a.href = 'proyecto-editar.html?id=' + encodeURIComponent(p.id);
-          a.innerHTML =
-            '<div class="fila">' +
-              '<div><div class="nombre">' + (p.nombre || p.id) + '</div>' +
-              '<div class="meta">' + (p.pais || '') + ' · vendido' + (p.fecha_venta ? ' ' + String(p.fecha_venta).split('T')[0] : '') + '</div></div>' +
-              '<div class="fila"><div class="monto" style="color:' + (p.ganancia >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmt(p.ganancia) + '</div><span class="arrow">›</span></div>' +
-            '</div>';
-          contV.appendChild(a);
-        });
-      }
-    })
-    .catch(function() {
+    const actoresResumen = Object.keys(saldoPorActor)
+      .filter(function(a) { return a; })
+      .map(function(a) { return { actor: a, saldo: saldoPorActor[a], tipo_actor: tipoActorPorActor[a] || 'propio' }; })
+      .sort(function(a, b) { return a.actor.localeCompare(b.actor); });
+
+    return {
+      proyectos_activos: proyectosActivos,
+      proyectos_vendidos: proyectosVendidos,
+      ganancia_anio: gananciaAnio,
+      activos: activos,
+      pasivos: pasivos,
+      pasivos_detalle: pasivosDetalle,
+      financiamiento_resumen: financiamientoResumen,
+      financiamiento_detalle: financiamientoDetalle,
+      actores_resumen: actoresResumen,
+      recuperos_pendientes: recuperosPendientes
+    };
+  }
+
+  function renderDashboard(d) {
+    ultimoDashboard = d;
+
+    const kg = document.getElementById('kpi-ganancia');
+    kg.textContent = fmt(d.ganancia_anio);
+    document.getElementById('kpi-ganancia-card').className = 'kpi ' + (d.ganancia_anio >= 0 ? 'pastel-green' : 'pastel-red');
+
+    document.getElementById('kpi-activos').textContent = fmt(d.activos);
+
+    const r = d.financiamiento_resumen || { propio: 0, prestamo: 0, inversor: 0 };
+    const totalFinanciacion = (r.propio || 0) + (r.prestamo || 0) + (r.inversor || 0);
+    document.getElementById('kpi-financiacion').textContent = fmt(totalFinanciacion);
+
+    const cont = document.getElementById('lista-proyectos');
+    if (!d.proyectos_activos.length) {
+      cont.innerHTML = '<p class="sub" style="margin:0">No hay proyectos activos todavía.</p>';
+    } else {
+      cont.innerHTML = '';
+      d.proyectos_activos.forEach(function(p) {
+        const a = document.createElement('a');
+        a.className = 'proyecto-card';
+        a.href = 'proyecto-editar.html?id=' + encodeURIComponent(p.id);
+        a.innerHTML =
+          '<div class="fila">' +
+            '<div><div class="nombre">' + (p.nombre || p.id) + '</div>' +
+            '<div class="meta">' + (p.pais || '') + ' · ' + (p.estado || '').replace('_',' ') + '</div></div>' +
+            '<div class="fila"><div class="monto">' + fmt(p.valor_estimado) + '</div><span class="arrow">›</span></div>' +
+          '</div>';
+        cont.appendChild(a);
+      });
+    }
+
+    const vendidos = d.proyectos_vendidos || [];
+    if (vendidos.length) {
+      document.getElementById('card-vendidos').style.display = 'block';
+      const contV = document.getElementById('lista-vendidos');
+      contV.innerHTML = '';
+      vendidos.forEach(function(p) {
+        const a = document.createElement('a');
+        a.className = 'proyecto-card';
+        a.href = 'proyecto-editar.html?id=' + encodeURIComponent(p.id);
+        a.innerHTML =
+          '<div class="fila">' +
+            '<div><div class="nombre">' + (p.nombre || p.id) + '</div>' +
+            '<div class="meta">' + (p.pais || '') + ' · vendido' + (p.fecha_venta ? ' ' + String(p.fecha_venta).split('T')[0] : '') + '</div></div>' +
+            '<div class="fila"><div class="monto" style="color:' + (p.ganancia >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmt(p.ganancia) + '</div><span class="arrow">›</span></div>' +
+          '</div>';
+        contV.appendChild(a);
+      });
+    }
+  }
+
+  function cargarTodo() {
+    Promise.all([
+      sbGet('proyectos', 'select=*'),
+      sbGet('ejecucion', 'select=*'),
+      sbGet('movimientos', 'select=*'),
+      sbGet('cierre_venta', 'select=*')
+    ]).then(function(res) {
+      const d = computeDashboard(res[0] || [], res[1] || [], res[2] || [], res[3] || []);
+      renderDashboard(d);
+    }).catch(function() {
       document.getElementById('lista-proyectos').innerHTML = '<p class="sub" style="margin:0">No se pudo conectar.</p>';
     });
+  }
+  cargarTodo();
 
   // --- Modal de Financiación con 3 niveles: categoría → actor → aporte/retiro ---
 
@@ -199,23 +356,16 @@
         mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         actor: nombre,
         tipo_actor: categoria,
-        id_proyecto: '',
+        id_proyecto: null,
         tipo_movimiento: 'aporte_externo',
         monto: monto,
         fecha: document.getElementById('nuevo-actor-fecha').value,
         nota: document.getElementById('nuevo-actor-nota').value
       };
-      fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ sheet: 'Movimientos', fields: fields })
-      })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.ok) { window.location.reload(); }
-          else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
-        })
-        .catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+      sbInsert('movimientos', fields).then(function(data) {
+        if (data.ok) { window.location.reload(); }
+        else { msg.textContent = 'Error al guardar.'; msg.className = 'err'; }
+      }).catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     });
   }
 
@@ -232,10 +382,9 @@
     (ultimoDashboard.proyectos_activos || []).forEach(function(p) { nombrePorId[p.id] = p.nombre; });
     (ultimoDashboard.proyectos_vendidos || []).forEach(function(p) { nombrePorId[p.id] = p.nombre; });
 
-    fetch(APPS_SCRIPT_URL + '?accion=movimientos_actor&actor=' + encodeURIComponent(actor))
-      .then(function(r) { return r.json(); })
-      .then(function(res) {
-        const movs = res.ok ? res.movimientos : [];
+    sbGet('movimientos', 'select=*&actor=eq.' + encodeURIComponent(actor))
+      .then(function(movs) {
+        movs = movs || [];
         let aporteExterno = 0, retiro = 0;
         const porProyecto = {};
         movs.forEach(function(m) {
@@ -315,40 +464,26 @@
         mov_id: 'm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         actor: actor,
         tipo_actor: categoria,
-        id_proyecto: '',
+        id_proyecto: null,
         tipo_movimiento: document.getElementById('mov-tipo').value,
         monto: monto,
         fecha: document.getElementById('mov-fecha').value,
         nota: document.getElementById('mov-nota').value
       };
-      fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ sheet: 'Movimientos', fields: fields })
-      })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.ok) { window.location.reload(); }
-          else { msg.textContent = 'Error: ' + data.error; msg.className = 'err'; }
-        })
-        .catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+      sbInsert('movimientos', fields).then(function(data) {
+        if (data.ok) { window.location.reload(); }
+        else { msg.textContent = 'Error al guardar.'; msg.className = 'err'; }
+      }).catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     });
 
     const btnEliminar = document.getElementById('btn-eliminar-actor');
     if (btnEliminar) {
       btnEliminar.addEventListener('click', function() {
         if (!confirm('¿Eliminar a ' + actor + '? Se van a borrar todos sus movimientos. No se puede deshacer.')) return;
-        fetch(APPS_SCRIPT_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ modo: 'eliminar_actor', actor: actor })
-        })
-          .then(function(r) { return r.json(); })
-          .then(function(data) {
-            if (data.ok) { window.location.reload(); }
-            else { alert('Error: ' + data.error); }
-          })
-          .catch(function() { alert('No se pudo conectar.'); });
+        sbDelete('movimientos', 'actor=eq.' + encodeURIComponent(actor)).then(function(data) {
+          if (data.ok) { window.location.reload(); }
+          else { alert('Error al eliminar.'); }
+        }).catch(function() { alert('No se pudo conectar.'); });
       });
     }
   }
