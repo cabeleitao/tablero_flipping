@@ -1368,6 +1368,10 @@
     const btn = document.getElementById('btn-financiamiento');
     const msg = document.getElementById('msg-financiamiento');
     msg.textContent = '';
+    msg.className = '';
+    btn.disabled = true;
+    cargarActoresGlobal().then(function() {
+    btn.disabled = false;
 
     if (formModoActual === 'devolucion_proyecto') {
       // Refinanciar: devoluciones marcadas (a quién le devolvés) + fuente nueva opcional (de dónde sale la plata).
@@ -1425,6 +1429,7 @@
         cargarActoresGlobal().then(cargarDetalle);
       }).catch(function() { btnEl.disabled = false; msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
     }
+    }).catch(function() { btn.disabled = false; msg.textContent = 'No se pudo conectar. Reintentá.'; msg.className = 'err'; });
   });
 
   // --- Eliminar proyecto ---
