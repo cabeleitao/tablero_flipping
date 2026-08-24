@@ -516,37 +516,7 @@
       const histCont = document.getElementById('hist-financiamiento');
       const mov = data.movimientos || [];
       movimientosActual = mov;
-      if (!mov.length) {
-        histCont.innerHTML = '<p class="sub" style="margin:0">Sin movimientos cargados todavía.</p>';
-      } else {
-        histCont.innerHTML = '';
-        mov.slice().sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).forEach(function(m) {
-          const esAporte = m.tipo_movimiento === 'aporte_proyecto';
-          const row = document.createElement('div');
-          row.className = 'hist-row';
-          row.innerHTML =
-            '<span><span class="tag" style="background:' + (esAporte ? 'var(--accent-soft)' : '#e6f4ea') + ';color:' + (esAporte ? 'var(--accent)' : 'var(--success)') + '">' +
-              (esAporte ? 'FINANCIAMIENTO' : 'RECUPERO') + '</span>' + (m.actor || '') + ' · ' + (m.tipo_actor || '') + '</span>' +
-            '<span style="display:flex;align-items:center;gap:10px">' + fmt(m.monto) + (m.tasa_anual ? ' · ' + m.tasa_anual + '%' : '') +
-            (m.mov_id ? ' <button type="button" class="btn ghost editar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' : '') +
-            (m.mov_id ? ' <button type="button" class="btn ghost eliminar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline;color:var(--danger)">Eliminar</button>' : '') +
-            '</span>';
-          histCont.appendChild(row);
-        });
-        histCont.querySelectorAll('.editar-fin').forEach(function(btn) {
-          btn.addEventListener('click', function() { abrirEdicionFinanciamiento(btn.dataset.movid); });
-        });
-        histCont.querySelectorAll('.eliminar-fin').forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            if (!confirm('¿Eliminar este movimiento? No se puede deshacer.')) return;
-            postFila({ modo: 'eliminar_fila', sheet: 'Movimientos', campo: 'mov_id', valor: btn.dataset.movid })
-              .then(function(data) {
-                if (data.ok) { cargarActoresGlobal().then(cargarDetalle); }
-                else { alert('Error al eliminar.'); }
-              }).catch(function() { alert('No se pudo conectar.'); });
-          });
-        });
-      }
+      renderHistFinanciamiento(mov);
 
       const financiado = mov.reduce(function(a, m) {
         return a + (m.tipo_movimiento === 'aporte_proyecto' ? (parseFloat(m.monto) || 0) : -(parseFloat(m.monto) || 0));
@@ -583,6 +553,77 @@
   function fmt(n) { return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 }); }
 
   // --- Modal de gastos con drill-down: rubro > sub-rubro > proveedor > detalle ---
+  const ETIQUETAS_FIN = { propio: 'Capital propio', inversor: 'Inversores', prestamo: 'Préstamos' };
+
+  function renderHistFinanciamiento(mov) {
+    const histCont = document.getElementById('hist-financiamiento');
+    if (!mov.length) {
+      histCont.innerHTML = '<p class="sub" style="margin:0">Sin movimientos cargados todavía.</p>';
+      return;
+    }
+    const totalPorCategoria = {};
+    mov.forEach(function(m) {
+      const signo = m.tipo_movimiento === 'aporte_proyecto' ? 1 : -1;
+      const cat = m.tipo_actor || 'propio';
+      totalPorCategoria[cat] = (totalPorCategoria[cat] || 0) + signo * (parseFloat(m.monto) || 0);
+    });
+    const categorias = Object.keys(totalPorCategoria);
+    histCont.innerHTML = categorias.map(function(cat) {
+      return '<div class="hist-row cat-fin" data-cat="' + cat + '" style="cursor:pointer"><span>' + (ETIQUETAS_FIN[cat] || cat) + '</span><span>' + fmt(totalPorCategoria[cat]) + '</span></div>';
+    }).join('');
+    histCont.querySelectorAll('.cat-fin').forEach(function(el) {
+      el.addEventListener('click', function() { mostrarDrillCategoriaFin(el.dataset.cat); });
+    });
+  }
+
+  function mostrarDrillCategoriaFin(cat) {
+    const mov = movimientosActual.filter(function(m) { return (m.tipo_actor || 'propio') === cat; });
+    const netoPorActor = {};
+    mov.forEach(function(m) {
+      const signo = m.tipo_movimiento === 'aporte_proyecto' ? 1 : -1;
+      netoPorActor[m.actor] = (netoPorActor[m.actor] || 0) + signo * (parseFloat(m.monto) || 0);
+    });
+    const actores = Object.keys(netoPorActor);
+    const filas = actores.map(function(actor) {
+      return '<div class="hist-row drill-actor-fin" data-actor="' + actor.replace(/"/g, '&quot;') + '" style="cursor:pointer"><span>' + actor + '</span><span>' + fmt(netoPorActor[actor]) + '</span></div>';
+    }).join('');
+    abrirModalGastos(ETIQUETAS_FIN[cat] || cat, filas, false, null);
+    document.querySelectorAll('.drill-actor-fin').forEach(function(el) {
+      el.addEventListener('click', function() {
+        const actor = el.dataset.actor;
+        const filtrados = mov.filter(function(m) { return m.actor === actor; });
+        mostrarDrillMovimientosFin(ETIQUETAS_FIN[cat] || cat, actor, filtrados, cat);
+      });
+    });
+  }
+
+  function mostrarDrillMovimientosFin(catLabel, actor, movs, cat) {
+    const filas = movs.slice().sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).map(function(m) {
+      const esAporte = m.tipo_movimiento === 'aporte_proyecto';
+      return '<div class="hist-row">' +
+        '<span><span class="tag" style="background:' + (esAporte ? 'var(--accent-soft)' : '#e6f4ea') + ';color:' + (esAporte ? 'var(--accent)' : 'var(--success)') + '">' +
+          (esAporte ? 'FINANCIAMIENTO' : 'RECUPERO') + '</span>' + (m.fecha || '') + '</span>' +
+        '<span style="display:flex;align-items:center;gap:10px">' + fmt(m.monto) + (m.tasa_anual ? ' · ' + m.tasa_anual + '%' : '') +
+        (m.mov_id ? ' <button type="button" class="btn ghost editar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' : '') +
+        (m.mov_id ? ' <button type="button" class="btn ghost eliminar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline;color:var(--danger)">Eliminar</button>' : '') +
+        '</span>';
+    }).join('');
+    abrirModalGastos(actor, filas, true, function() { mostrarDrillCategoriaFin(cat); });
+    document.querySelectorAll('.editar-fin').forEach(function(btn) {
+      btn.addEventListener('click', function() { abrirEdicionFinanciamiento(btn.dataset.movid); });
+    });
+    document.querySelectorAll('.eliminar-fin').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (!confirm('¿Eliminar este movimiento? No se puede deshacer.')) return;
+        postFila({ modo: 'eliminar_fila', sheet: 'Movimientos', campo: 'mov_id', valor: btn.dataset.movid })
+          .then(function(data) {
+            if (data.ok) { document.getElementById('modal-gastos').classList.remove('show'); cargarActoresGlobal().then(cargarDetalle); }
+            else { alert('Error al eliminar.'); }
+          }).catch(function() { alert('No se pudo conectar.'); });
+      });
+    });
+  }
+
   function abrirModalGastos(titulo, filasHtml, mostrarAtras, onAtras) {
     document.getElementById('modal-gastos-titulo').textContent = titulo;
     document.getElementById('modal-gastos-lista').innerHTML = filasHtml;
