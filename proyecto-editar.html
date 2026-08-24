@@ -120,15 +120,14 @@
       <input type="text" id="ed_actor">
       <label for="ed_monto">Monto</label>
       <input type="number" id="ed_monto" step="0.01" min="0">
-      <label for="ed_tasa_anual">Tasa anual (%)</label>
-      <input type="number" id="ed_tasa_anual" step="0.01" min="0">
       <label for="ed_fecha">Fecha</label>
       <input type="date" id="ed_fecha">
-      <label for="ed_penalidad_prepago">Penalidad por cancelación anticipada</label>
-      <input type="text" id="ed_penalidad_prepago">
-      <label for="ed_retorno_pactado">Retorno pactado</label>
-      <input type="text" id="ed_retorno_pactado">
-      <label for="ed_nota">Nota</label>
+      <label for="ed_nota" style="display:flex;align-items:center;justify-content:space-between">
+        <span>Nota</span>
+        <button type="button" id="btn-adjuntar-ed-fin" style="background:none;border:none;cursor:pointer;font-size:20px;padding:0 4px" title="Adjuntar documento">📎</button>
+      </label>
+      <input type="file" id="input-archivo-ed-fin" accept="image/*,.pdf" style="display:none">
+      <div id="adjunto-preview-ed-fin" style="display:none;margin-bottom:10px;font-size:13px"></div>
       <input type="text" id="ed_nota">
       <div style="display:flex;gap:10px;margin-top:10px">
         <button type="submit" style="margin-top:0">Guardar cambios</button>
@@ -322,14 +321,41 @@
     document.getElementById('ed_tipo_actor').value = m.tipo_actor || 'propio';
     document.getElementById('ed_actor').value = m.actor || '';
     document.getElementById('ed_monto').value = m.monto || '';
-    document.getElementById('ed_tasa_anual').value = m.tasa_anual || '';
     document.getElementById('ed_fecha').value = m.fecha ? String(m.fecha).split('T')[0] : '';
-    document.getElementById('ed_penalidad_prepago').value = m.penalidad_prepago || '';
-    document.getElementById('ed_retorno_pactado').value = m.retorno_pactado || '';
     document.getElementById('ed_nota').value = m.nota || '';
+    document.getElementById('adjunto-preview-ed-fin').style.display = 'none';
     document.getElementById('f-editar-financiamiento').style.display = 'block';
     document.getElementById('f-editar-financiamiento').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
+
+  document.getElementById('btn-adjuntar-ed-fin').addEventListener('click', function() {
+    document.getElementById('input-archivo-ed-fin').click();
+  });
+  document.getElementById('input-archivo-ed-fin').addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+    const preview = document.getElementById('adjunto-preview-ed-fin');
+    preview.style.display = 'block';
+    preview.textContent = 'Subiendo ' + file.name + '…';
+    document.getElementById('btn-adjuntar-ed-fin').disabled = true;
+
+    const nombreArchivo = Date.now() + '-' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    fetch(STORAGE_URL + '/object/comprobantes/' + nombreArchivo, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': file.type || 'application/octet-stream' },
+      body: file
+    }).then(function(r) {
+      document.getElementById('btn-adjuntar-ed-fin').disabled = false;
+      if (!r.ok) { preview.textContent = 'Error al subir el archivo.'; return; }
+      const url = STORAGE_URL + '/object/public/comprobantes/' + nombreArchivo;
+      const notaActual = document.getElementById('ed_nota').value.trim();
+      document.getElementById('ed_nota').value = notaActual ? (notaActual + ' — Documento: ' + url) : ('Documento: ' + url);
+      preview.innerHTML = '✅ Adjuntado: ' + file.name + ' — acordate de tocar "Guardar cambios"';
+    }).catch(function() {
+      document.getElementById('btn-adjuntar-ed-fin').disabled = false;
+      preview.textContent = 'No se pudo conectar para subir el archivo.';
+    });
+  });
 
   document.getElementById('btn-cancelar-edicion').addEventListener('click', function() {
     document.getElementById('f-editar-financiamiento').style.display = 'none';
@@ -349,10 +375,7 @@
         tipo_actor: document.getElementById('ed_tipo_actor').value,
         actor: document.getElementById('ed_actor').value,
         monto: document.getElementById('ed_monto').value,
-        tasa_anual: document.getElementById('ed_tasa_anual').value,
         fecha: document.getElementById('ed_fecha').value,
-        penalidad_prepago: document.getElementById('ed_penalidad_prepago').value,
-        retorno_pactado: document.getElementById('ed_retorno_pactado').value,
         nota: document.getElementById('ed_nota').value
       }
     }).then(function(data) {
