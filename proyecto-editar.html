@@ -398,7 +398,15 @@
     }
 
     if (payload.modo === 'actualizar') {
-      // Upsert por id_proyecto — sirve tanto para Proyectos como para Cierre_venta (las dos usan id_proyecto como clave).
+      if (tabla === 'proyectos') {
+        // El proyecto siempre existe cuando lo editás: un UPDATE simple alcanza (evita pedir columnas obligatorias que no vienen al caso).
+        return fetch(SUPABASE_URL + '/proyectos?id_proyecto=eq.' + encodeURIComponent(payload.id_proyecto), {
+          method: 'PATCH',
+          headers: sbHeaders({ Prefer: 'return=minimal' }),
+          body: JSON.stringify(sanitizeFields(payload.fields))
+        }).then(sbResult);
+      }
+      // Cierre_venta puede no tener fila todavía (primera vez que se carga el cierre) — ahí sí hace falta upsert.
       const fields = sanitizeFields(payload.fields);
       fields.id_proyecto = payload.id_proyecto;
       return fetch(SUPABASE_URL + '/' + tabla + '?on_conflict=id_proyecto', {
