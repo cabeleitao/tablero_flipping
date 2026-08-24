@@ -606,7 +606,7 @@
         '<span style="display:flex;align-items:center;gap:10px">' + fmt(m.monto) + (m.tasa_anual ? ' · ' + m.tasa_anual + '%' : '') +
         (m.mov_id ? ' <button type="button" class="btn ghost editar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' : '') +
         (m.mov_id ? ' <button type="button" class="btn ghost eliminar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline;color:var(--danger)">Eliminar</button>' : '') +
-        '</span>';
+        '</span></div>';
     }).join('');
     abrirModalGastos(actor, filas, true, function() { mostrarDrillCategoriaFin(cat); });
     document.querySelectorAll('.editar-fin').forEach(function(btn) {
