@@ -570,7 +570,7 @@
 
       document.getElementById('contenido').style.display = 'block';
       renderResumen(data.presupuesto || [], data.ejecucion || [], mov, data.cierre, p);
-      inicializarRecupero(c, mov);
+      inicializarRecupero(c, mov, p.estado);
     })
     .catch(function() {
       document.getElementById('titulo').textContent = 'No se pudo conectar';
@@ -979,18 +979,19 @@
   let recuperoFilas = [];
   let recuperoRecibido = 0;
 
-  function inicializarRecupero(cierre, movimientos) {
+  function inicializarRecupero(cierre, movimientos, estado) {
     const disponible = !!(cierre && cierre.precio_venta);
+
+    // Los botones de aporte/refinanciar se rigen por el estado del proyecto, no por si ya se cargó una venta.
+    const vendido = estado === 'vendido';
+    document.getElementById('btn-mostrar-aporte').style.display = vendido ? 'none' : 'inline-flex';
+    document.getElementById('btn-mostrar-devolucion').style.display = vendido ? 'none' : 'inline-flex';
+
     if (!disponible) {
       document.getElementById('btn-mostrar-recupero').style.display = 'none';
       document.getElementById('recupero-contenido').style.display = 'none';
-      document.getElementById('btn-mostrar-aporte').style.display = 'inline-flex';
-      document.getElementById('btn-mostrar-devolucion').style.display = 'inline-flex';
       return;
     }
-    // Proyecto vendido: nunca tiene sentido agregar financiamiento nuevo ni refinanciar.
-    document.getElementById('btn-mostrar-aporte').style.display = 'none';
-    document.getElementById('btn-mostrar-devolucion').style.display = 'none';
 
     recuperoRecibido = (parseFloat(cierre.precio_venta) || 0) - (parseFloat(cierre.gastos_cierre_venta) || 0);
     document.getElementById('recupero-recibido').textContent = fmt(recuperoRecibido);
