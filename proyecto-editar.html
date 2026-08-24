@@ -88,6 +88,11 @@
   <div class="section" id="tab-financiamiento">
     <div id="hist-financiamiento"><p class="sub" style="margin:0">Sin movimientos cargados todavía.</p></div>
     <p class="sub" id="resumen-financiamiento" style="margin:10px 0 0"></p>
+    <div id="post-cierre-cont" style="display:none;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+      <p class="sub" style="margin:0 0 8px;font-weight:600;color:var(--text-primary)">Gastos post-cierre</p>
+      <div id="hist-financiamiento-post"></div>
+      <p class="sub" id="resumen-financiamiento-post" style="margin:10px 0 0"></p>
+    </div>
     <div class="actions" style="margin-top:14px">
       <button type="button" class="btn secondary" id="btn-mostrar-aporte">+ Agregar financiamiento</button>
       <button type="button" class="btn secondary" id="btn-mostrar-devolucion">+ Refinanciar</button>
@@ -314,6 +319,7 @@
   }
 
   let movimientosActual = [];
+  let movimientosPost = [];
 
   function abrirEdicionFinanciamiento(movId) {
     const m = movimientosActual.find(function(x) { return x.mov_id === movId; });
@@ -515,18 +521,27 @@
 
       const histCont = document.getElementById('hist-financiamiento');
       const mov = data.movimientos || [];
-      movimientosActual = mov;
       const recuperoMovs = mov.filter(function(m) { return m.nota === 'Recupero al vender'; });
       const sumRecupero = recuperoMovs.reduce(function(a, m) { return a + (parseFloat(m.monto) || 0); }, 0);
       const recibidoTotal = c ? (parseFloat(c.precio_venta) || 0) - (parseFloat(c.gastos_cierre_venta) || 0) : 0;
       const recuperoCompletado = !!(c && recuperoMovs.length && Math.abs(sumRecupero - recibidoTotal) < 0.5);
-      renderHistFinanciamiento(mov, recuperoCompletado);
+      const fechaMarcador = recuperoCompletado
+        ? recuperoMovs.reduce(function(max, m) { return m.fecha > max ? m.fecha : max; }, recuperoMovs[0].fecha)
+        : null;
 
-      const financiado = mov.reduce(function(a, m) {
+      const movAntes = fechaMarcador ? mov.filter(function(m) { return String(m.fecha) <= fechaMarcador; }) : mov;
+      const movDespues = fechaMarcador ? mov.filter(function(m) { return String(m.fecha) > fechaMarcador; }) : [];
+      movimientosActual = movAntes;
+      movimientosPost = movDespues;
+      renderHistFinanciamiento(movAntes, recuperoCompletado);
+
+      const financiado = movAntes.reduce(function(a, m) {
         return a + (m.tipo_movimiento === 'aporte_proyecto' ? (parseFloat(m.monto) || 0) : -(parseFloat(m.monto) || 0));
       }, 0);
       const ejecucionArr = data.ejecucion || [];
-      const necesario = ejecucionArr
+      const ejecucionAntes = fechaMarcador ? ejecucionArr.filter(function(e) { return String(e.fecha) <= fechaMarcador; }) : ejecucionArr;
+      const ejecucionDespues = fechaMarcador ? ejecucionArr.filter(function(e) { return String(e.fecha) > fechaMarcador; }) : [];
+      const necesario = ejecucionAntes
         .filter(function(e) { return e.rubro === 'compra' || e.rubro === 'remodelacion'; })
         .reduce(function(a, e) { return a + (parseFloat(e.monto) || 0); }, 0);
       const resumen = document.getElementById('resumen-financiamiento');
@@ -546,6 +561,25 @@
         resumen.style.color = financiado < necesario ? 'var(--danger)' : 'var(--text-secondary)';
       } else {
         resumen.textContent = '';
+      }
+
+      const postCont = document.getElementById('post-cierre-cont');
+      const necesarioPost = ejecucionDespues.reduce(function(a, e) { return a + (parseFloat(e.monto) || 0); }, 0);
+      if (recuperoCompletado && (movDespues.length || necesarioPost > 0)) {
+        postCont.style.display = 'block';
+        renderHistFinanciamiento(movDespues, false, 'hist-financiamiento-post', true);
+        const financiadoPost = movDespues.reduce(function(a, m) {
+          return a + (m.tipo_movimiento === 'aporte_proyecto' ? (parseFloat(m.monto) || 0) : -(parseFloat(m.monto) || 0));
+        }, 0);
+        const resumenPost = document.getElementById('resumen-financiamiento-post');
+        if (necesarioPost > 0) {
+          resumenPost.textContent = 'Financiado: ' + fmt(financiadoPost) + ' de ' + fmt(necesarioPost) + ' necesario';
+          resumenPost.style.color = financiadoPost < necesarioPost ? 'var(--danger)' : 'var(--text-secondary)';
+        } else {
+          resumenPost.textContent = '';
+        }
+      } else {
+        postCont.style.display = 'none';
       }
 
       document.getElementById('contenido').style.display = 'block';
@@ -569,16 +603,16 @@
 
   let proyectoVendidoActual = false;
 
-  function celdaMontoFin(neto) {
-    if (proyectoVendidoActual && neto <= 0.5) {
+  function celdaMontoFin(neto, post) {
+    if (!post && proyectoVendidoActual && neto <= 0.5) {
       return '<span style="color:var(--success)">Beneficio retirado: ' + fmt(-neto) + '</span>';
     }
     return '<span>' + fmt(neto) + '</span>';
   }
 
-  function renderHistFinanciamiento(mov, recuperoCompletado) {
-    proyectoVendidoActual = !!recuperoCompletado;
-    const histCont = document.getElementById('hist-financiamiento');
+  function renderHistFinanciamiento(mov, recuperoCompletado, containerId, post) {
+    if (!post) proyectoVendidoActual = !!recuperoCompletado;
+    const histCont = document.getElementById(containerId || 'hist-financiamiento');
     if (!mov.length) {
       histCont.innerHTML = '<p class="sub" style="margin:0">Sin movimientos cargados todavía.</p>';
       return;
@@ -591,15 +625,16 @@
     });
     const categorias = Object.keys(totalPorCategoria);
     histCont.innerHTML = categorias.map(function(cat) {
-      return '<div class="hist-row cat-fin" data-cat="' + cat + '" style="cursor:pointer"><span>' + (ETIQUETAS_FIN[cat] || cat) + '</span>' + celdaMontoFin(totalPorCategoria[cat]) + '</div>';
+      return '<div class="hist-row cat-fin' + (post ? '-post' : '') + '" data-cat="' + cat + '" style="cursor:pointer"><span>' + (ETIQUETAS_FIN[cat] || cat) + '</span>' + celdaMontoFin(totalPorCategoria[cat], post) + '</div>';
     }).join('');
-    histCont.querySelectorAll('.cat-fin').forEach(function(el) {
-      el.addEventListener('click', function() { mostrarDrillCategoriaFin(el.dataset.cat); });
+    histCont.querySelectorAll('.cat-fin' + (post ? '-post' : '')).forEach(function(el) {
+      el.addEventListener('click', function() { mostrarDrillCategoriaFin(el.dataset.cat, post); });
     });
   }
 
-  function mostrarDrillCategoriaFin(cat) {
-    const mov = movimientosActual.filter(function(m) { return (m.tipo_actor || 'propio') === cat; });
+  function mostrarDrillCategoriaFin(cat, post) {
+    const fuente = post ? movimientosPost : movimientosActual;
+    const mov = fuente.filter(function(m) { return (m.tipo_actor || 'propio') === cat; });
     const netoPorActor = {};
     mov.forEach(function(m) {
       const signo = m.tipo_movimiento === 'aporte_proyecto' ? 1 : -1;
@@ -607,19 +642,19 @@
     });
     const actores = Object.keys(netoPorActor);
     const filas = actores.map(function(actor) {
-      return '<div class="hist-row drill-actor-fin" data-actor="' + actor.replace(/"/g, '&quot;') + '" style="cursor:pointer"><span>' + actor + '</span>' + celdaMontoFin(netoPorActor[actor]) + '</div>';
+      return '<div class="hist-row drill-actor-fin" data-actor="' + actor.replace(/"/g, '&quot;') + '" style="cursor:pointer"><span>' + actor + '</span>' + celdaMontoFin(netoPorActor[actor], post) + '</div>';
     }).join('');
     abrirModalGastos(ETIQUETAS_FIN[cat] || cat, filas, false, null);
     document.querySelectorAll('.drill-actor-fin').forEach(function(el) {
       el.addEventListener('click', function() {
         const actor = el.dataset.actor;
         const filtrados = mov.filter(function(m) { return m.actor === actor; });
-        mostrarDrillMovimientosFin(ETIQUETAS_FIN[cat] || cat, actor, filtrados, cat);
+        mostrarDrillMovimientosFin(ETIQUETAS_FIN[cat] || cat, actor, filtrados, cat, post);
       });
     });
   }
 
-  function mostrarDrillMovimientosFin(catLabel, actor, movs, cat) {
+  function mostrarDrillMovimientosFin(catLabel, actor, movs, cat, post) {
     const filas = movs.slice().sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).map(function(m) {
       const esAporte = m.tipo_movimiento === 'aporte_proyecto';
       return '<div class="hist-row">' +
@@ -630,7 +665,7 @@
         (m.mov_id ? ' <button type="button" class="btn ghost eliminar-fin" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline;color:var(--danger)">Eliminar</button>' : '') +
         '</span></div>';
     }).join('');
-    abrirModalGastos(actor, filas, true, function() { mostrarDrillCategoriaFin(cat); });
+    abrirModalGastos(actor, filas, true, function() { mostrarDrillCategoriaFin(cat, post); });
     document.querySelectorAll('.editar-fin').forEach(function(btn) {
       btn.addEventListener('click', function() { abrirEdicionFinanciamiento(btn.dataset.movid); });
     });
