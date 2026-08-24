@@ -445,7 +445,7 @@
   function mostrarDrillAportesExternos(actor, categoria, movs) {
     const filas = movs.slice().sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).map(function(m) {
       return '<div class="hist-row" style="font-size:13px">' +
-        '<span style="white-space:nowrap">' + fechaCorta(m.fecha) + (m.nota ? ' · ' + m.nota : '') + '</span>' +
+        '<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">' + fechaCorta(m.fecha) + (m.nota ? ' · ' + m.nota : '') + '</span>' +
         '<span style="display:flex;align-items:center;gap:10px">' + fmt(m.monto) +
         ' <button type="button" class="btn ghost editar-aporte-ext" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' +
         ' <button type="button" class="btn ghost eliminar-aporte-ext" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline;color:var(--danger)">Eliminar</button>' +
