@@ -18,7 +18,7 @@
 
 <div class="wrap">
   <div class="kpi-grid">
-    <div class="kpi pastel-green" id="kpi-ganancia-card"><p class="label">Ganancia del año</p><p class="value" id="kpi-ganancia">—</p></div>
+    <div class="kpi pastel-green" id="kpi-ganancia-card" style="cursor:pointer"><p class="label">Ganancia del año</p><p class="value" id="kpi-ganancia">—</p></div>
     <div class="kpi pastel-blue" id="kpi-activos-card" style="cursor:pointer"><p class="label">Activos</p><p class="value" id="kpi-activos">—</p></div>
     <div class="kpi pastel-amber" id="kpi-financiacion-card" style="cursor:pointer"><p class="label">Financiación</p><p class="value" id="kpi-financiacion">—</p></div>
   </div>
@@ -488,7 +488,42 @@
     }
   }
 
+  function mostrarNivelAnios() {
+    if (!ultimoDashboard) return;
+    const vendidos = ultimoDashboard.proyectos_vendidos || [];
+    const porAnio = {};
+    vendidos.forEach(function(p) {
+      const anio = p.fecha_venta ? new Date(p.fecha_venta).getFullYear() : 'Sin fecha';
+      porAnio[anio] = (porAnio[anio] || 0) + p.ganancia;
+    });
+    const anios = Object.keys(porAnio).sort().reverse();
+    const filas = anios.length
+      ? anios.map(function(anio) {
+          return '<div class="hist-row anio-ganancia" data-anio="' + anio + '" style="cursor:pointer"><span>' + anio + '</span><span style="color:' + (porAnio[anio] >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmt(porAnio[anio]) + '</span></div>';
+        }).join('')
+      : '<p class="sub" style="margin:0">Sin proyectos vendidos todavía.</p>';
+    abrirModal('Ganancia por año', filas, false, null);
+    document.querySelectorAll('.anio-ganancia').forEach(function(el) {
+      el.addEventListener('click', function() { mostrarProyectosAnio(el.dataset.anio); });
+    });
+  }
+
+  function mostrarProyectosAnio(anio) {
+    if (!ultimoDashboard) return;
+    const vendidos = (ultimoDashboard.proyectos_vendidos || []).filter(function(p) {
+      const a = p.fecha_venta ? String(new Date(p.fecha_venta).getFullYear()) : 'Sin fecha';
+      return a === anio;
+    });
+    const filas = vendidos.length
+      ? vendidos.map(function(p) {
+          return '<div class="hist-row"><span>' + (p.nombre || p.id) + '</span><span style="color:' + (p.ganancia >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmt(p.ganancia) + '</span></div>';
+        }).join('')
+      : '<p class="sub" style="margin:0">Sin proyectos vendidos este año.</p>';
+    abrirModal('Vendidos en ' + anio, filas, true, mostrarNivelAnios);
+  }
+
   document.getElementById('kpi-financiacion-card').addEventListener('click', mostrarNivelCategorias);
+  document.getElementById('kpi-ganancia-card').addEventListener('click', mostrarNivelAnios);
 
   document.getElementById('kpi-activos-card').addEventListener('click', function() {
     if (!ultimoDashboard) return;
