@@ -516,7 +516,11 @@
       const histCont = document.getElementById('hist-financiamiento');
       const mov = data.movimientos || [];
       movimientosActual = mov;
-      renderHistFinanciamiento(mov, p.estado);
+      const recuperoMovs = mov.filter(function(m) { return m.nota === 'Recupero al vender'; });
+      const sumRecupero = recuperoMovs.reduce(function(a, m) { return a + (parseFloat(m.monto) || 0); }, 0);
+      const recibidoTotal = c ? (parseFloat(c.precio_venta) || 0) - (parseFloat(c.gastos_cierre_venta) || 0) : 0;
+      const recuperoCompletado = !!(c && recuperoMovs.length && Math.abs(sumRecupero - recibidoTotal) < 0.5);
+      renderHistFinanciamiento(mov, recuperoCompletado);
 
       const financiado = mov.reduce(function(a, m) {
         return a + (m.tipo_movimiento === 'aporte_proyecto' ? (parseFloat(m.monto) || 0) : -(parseFloat(m.monto) || 0));
@@ -526,14 +530,17 @@
         .filter(function(e) { return e.rubro === 'compra' || e.rubro === 'remodelacion'; })
         .reduce(function(a, e) { return a + (parseFloat(e.monto) || 0); }, 0);
       const resumen = document.getElementById('resumen-financiamiento');
-      if (p.estado === 'vendido') {
-        if (Math.abs(financiado) < 0.5) {
-          resumen.textContent = 'Proyecto vendido y recupero completo — no quedan movimientos pendientes.';
+      if (recuperoCompletado) {
+        if (financiado <= 0.5) {
+          resumen.textContent = 'Recupero completo — beneficio retirado por los actores.';
           resumen.style.color = 'var(--success)';
         } else {
-          resumen.textContent = 'Proyecto vendido — usá "Registrar recupero" para devolverle a cada actor lo que le corresponde.';
-          resumen.style.color = 'var(--text-secondary)';
+          resumen.textContent = 'Recupero completo — la venta no alcanzó a cubrir todo lo aportado (pérdida soportada).';
+          resumen.style.color = 'var(--danger)';
         }
+      } else if (p.estado === 'vendido') {
+        resumen.textContent = 'Proyecto vendido — usá "Registrar recupero" para devolverle a cada actor lo que le corresponde.';
+        resumen.style.color = 'var(--text-secondary)';
       } else if (necesario > 0) {
         resumen.textContent = 'Financiado neto: ' + fmt(financiado) + ' de ' + fmt(necesario) + ' necesario (compra + remodelación ejecutadas)';
         resumen.style.color = financiado < necesario ? 'var(--danger)' : 'var(--text-secondary)';
@@ -569,8 +576,8 @@
     return '<span>' + fmt(neto) + '</span>';
   }
 
-  function renderHistFinanciamiento(mov, estado) {
-    proyectoVendidoActual = estado === 'vendido';
+  function renderHistFinanciamiento(mov, recuperoCompletado) {
+    proyectoVendidoActual = !!recuperoCompletado;
     const histCont = document.getElementById('hist-financiamiento');
     if (!mov.length) {
       histCont.innerHTML = '<p class="sub" style="margin:0">Sin movimientos cargados todavía.</p>';
