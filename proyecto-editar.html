@@ -99,7 +99,10 @@
       <div id="recupero-filas" style="margin:14px 0"></div>
       <button type="button" class="add-socio" id="btn-add-recupero">+ Agregar beneficiario</button>
       <p class="pct-total" id="recupero-total">Asignado: $0 de $0</p>
-      <button type="button" id="btn-guardar-recupero" style="width:100%;margin-top:20px;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;cursor:pointer;font-weight:600">Guardar recupero</button>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button type="button" id="btn-guardar-recupero" style="flex:1;margin-top:0;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;cursor:pointer;font-weight:600">Guardar recupero</button>
+        <button type="button" class="btn secondary" id="btn-cancelar-recupero" style="margin-top:0">Cancelar</button>
+      </div>
       <div id="msg-recupero"></div>
     </div>
 
@@ -1017,6 +1020,10 @@
     document.getElementById('f-editar-financiamiento').style.display = 'none';
     document.getElementById('recupero-contenido').style.display = 'block';
     renderRecupero();
+  });
+  document.getElementById('btn-cancelar-recupero').addEventListener('click', function() {
+    document.getElementById('recupero-contenido').style.display = 'none';
+    document.getElementById('msg-recupero').textContent = '';
   });
 
   function renderRecupero() {
