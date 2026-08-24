@@ -247,6 +247,7 @@
   // --- Conexión a Supabase (reemplaza Apps Script) ---
   const SUPABASE_URL = 'https://gdmgwbutazkrmzecncar.supabase.co/rest/v1';
   const SUPABASE_KEY = 'sb_publishable_F9Om9ujffEDhsnfs7LmPWg_O1OticCa';
+  const STORAGE_URL = 'https://gdmgwbutazkrmzecncar.supabase.co/storage/v1';
 
   function sbHeaders(extra) {
     return Object.assign({
@@ -685,11 +686,45 @@
       '<input type="number" id="ed-gasto-monto" step="0.01" min="0" value="' + (g.monto || '') + '">' +
       '<label for="ed-gasto-prov">Proveedor / GC</label>' +
       '<input type="text" id="ed-gasto-prov" value="' + (g.proveedor_gc || '').replace(/"/g, '&quot;') + '">' +
-      '<label for="ed-gasto-nota">Comprobante o nota</label>' +
+      '<label for="ed-gasto-nota" style="display:flex;align-items:center;justify-content:space-between">' +
+        '<span>Comprobante o nota</span>' +
+        '<button type="button" id="btn-adjuntar-edicion" style="background:none;border:none;cursor:pointer;font-size:20px;padding:0 4px" title="Adjuntar foto">📎</button>' +
+      '</label>' +
+      '<input type="file" id="input-archivo-edicion" accept="image/*,.pdf" style="display:none">' +
+      '<div id="adjunto-preview-edicion" style="display:none;margin-bottom:10px;font-size:13px"></div>' +
       '<input type="text" id="ed-gasto-nota" value="' + (g.comprobante_nota || '').replace(/"/g, '&quot;') + '">' +
       (/https?:\/\//.test(g.comprobante_nota || '') ? '<p class="sub" style="margin:6px 0 0"><a href="#" id="btn-quitar-adjunto-edicion" style="color:var(--danger)">Quitar el adjunto</a> — después tocá "Guardar cambios" para confirmarlo</p>' : '') +
       '<button type="button" id="btn-guardar-gasto" style="width:100%;margin-top:16px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer;font-weight:600">Guardar cambios</button>' +
       '<div id="msg-editar-gasto" style="margin-top:8px;font-size:13px"></div>';
+
+    document.getElementById('btn-adjuntar-edicion').addEventListener('click', function() {
+      document.getElementById('input-archivo-edicion').click();
+    });
+    document.getElementById('input-archivo-edicion').addEventListener('change', function() {
+      const file = this.files[0];
+      if (!file) return;
+      const preview = document.getElementById('adjunto-preview-edicion');
+      preview.style.display = 'block';
+      preview.textContent = 'Subiendo ' + file.name + '…';
+      document.getElementById('btn-adjuntar-edicion').disabled = true;
+
+      const nombreArchivo = Date.now() + '-' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      fetch(STORAGE_URL + '/object/comprobantes/' + nombreArchivo, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': file.type || 'application/octet-stream' },
+        body: file
+      }).then(function(r) {
+        document.getElementById('btn-adjuntar-edicion').disabled = false;
+        if (!r.ok) { preview.textContent = 'Error al subir el archivo.'; return; }
+        const url = STORAGE_URL + '/object/public/comprobantes/' + nombreArchivo;
+        const notaActual = document.getElementById('ed-gasto-nota').value.trim();
+        document.getElementById('ed-gasto-nota').value = notaActual ? (notaActual + ' — Comprobante: ' + url) : ('Comprobante: ' + url);
+        preview.innerHTML = '✅ Adjuntado: ' + file.name + ' — acordate de tocar "Guardar cambios"';
+      }).catch(function() {
+        document.getElementById('btn-adjuntar-edicion').disabled = false;
+        preview.textContent = 'No se pudo conectar para subir el archivo.';
+      });
+    });
 
     const btnQuitarAdjunto = document.getElementById('btn-quitar-adjunto-edicion');
     if (btnQuitarAdjunto) {
