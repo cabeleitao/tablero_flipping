@@ -71,6 +71,13 @@
       body: JSON.stringify(fields)
     }).then(function(r) { return { ok: r.ok }; });
   }
+  function sbUpdate(table, query, fields) {
+    return fetch(SUPABASE_URL + '/' + table + '?' + query, {
+      method: 'PATCH',
+      headers: sbHeaders({ Prefer: 'return=minimal' }),
+      body: JSON.stringify(fields)
+    }).then(function(r) { return { ok: r.ok }; });
+  }
   function sbDelete(table, query) {
     return fetch(SUPABASE_URL + '/' + table + '?' + query, {
       method: 'DELETE',
@@ -80,6 +87,11 @@
 
   function fmt(n) {
     return '$' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+  }
+  function fechaCorta(f) {
+    if (!f) return '';
+    const p = String(f).split('T')[0].split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0].slice(2) : f;
   }
 
   const ETIQUETAS_CATEGORIA = { propio: 'Capital propio', inversor: 'Inversores', prestamo: 'Préstamos' };
@@ -400,7 +412,8 @@
         });
 
         let filas = '<div class="hist-row"><span>Cuenta corriente</span><span style="color:' + (saldo < 0 ? 'var(--danger)' : 'var(--text-secondary)') + '">' + fmt(saldo) + '</span></div>';
-        if (aporteExterno) filas += '<div class="hist-row" style="font-size:13px"><span>Aportes externos</span><span style="color:var(--success)">+' + fmt(aporteExterno) + '</span></div>';
+        const movsAporteExterno = movs.filter(function(m) { return !m.id_proyecto && m.tipo_movimiento === 'aporte_externo'; });
+        if (aporteExterno) filas += '<div class="hist-row aportes-externos-row" style="font-size:13px;cursor:pointer"><span>Aportes externos</span><span style="color:var(--success)">+' + fmt(aporteExterno) + '</span></div>';
         if (retiro) filas += '<div class="hist-row" style="font-size:13px"><span>Retiros</span><span style="color:var(--danger)">−' + fmt(retiro) + '</span></div>';
 
         const ids = Object.keys(porProyecto);
@@ -417,10 +430,73 @@
           filas += '<p class="sub" style="margin:10px 0 0">Sin movimientos todavía.</p>';
         }
         document.getElementById('modal-detalle-lista').innerHTML = filas;
+        const rowAportes = document.querySelector('.aportes-externos-row');
+        if (rowAportes) {
+          rowAportes.addEventListener('click', function() {
+            mostrarDrillAportesExternos(actor, categoria, movsAporteExterno);
+          });
+        }
       })
       .catch(function() {
         document.getElementById('modal-detalle-lista').innerHTML += '<p class="sub" style="margin:10px 0 0">No se pudo cargar el historial.</p>';
       });
+  }
+
+  function mostrarDrillAportesExternos(actor, categoria, movs) {
+    const filas = movs.slice().sort(function(a, b) { return String(a.fecha).localeCompare(String(b.fecha)); }).map(function(m) {
+      return '<div class="hist-row" style="font-size:13px">' +
+        '<span style="white-space:nowrap">' + fechaCorta(m.fecha) + (m.nota ? ' · ' + m.nota : '') + '</span>' +
+        '<span style="display:flex;align-items:center;gap:10px">' + fmt(m.monto) +
+        ' <button type="button" class="btn ghost editar-aporte-ext" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline">Editar</button>' +
+        ' <button type="button" class="btn ghost eliminar-aporte-ext" data-movid="' + m.mov_id + '" style="padding:2px 8px;font-size:13px;text-decoration:underline;color:var(--danger)">Eliminar</button>' +
+        '</span></div>';
+    }).join('') || '<p class="sub" style="margin:0">Sin aportes externos todavía.</p>';
+    abrirModal('Aportes externos · ' + actor, filas, true, function() { mostrarNivelActor(actor, categoria); });
+    document.querySelectorAll('.editar-aporte-ext').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const mov = movs.find(function(m) { return m.mov_id === btn.dataset.movid; });
+        abrirEdicionAporteExterno(mov, actor, categoria, movs);
+      });
+    });
+    document.querySelectorAll('.eliminar-aporte-ext').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (!confirm('¿Eliminar este aporte externo? No se puede deshacer.')) return;
+        sbDelete('movimientos', 'mov_id=eq.' + encodeURIComponent(btn.dataset.movid)).then(function(data) {
+          if (data.ok) { window.location.reload(); }
+          else { alert('Error al eliminar.'); }
+        }).catch(function() { alert('No se pudo conectar.'); });
+      });
+    });
+  }
+
+  function abrirEdicionAporteExterno(mov, actor, categoria, movs) {
+    abrirModal('Editar aporte · ' + actor, '', true, function() { mostrarDrillAportesExternos(actor, categoria, movs); });
+    const form = document.getElementById('modal-detalle-form');
+    form.style.display = 'block';
+    form.innerHTML =
+      '<label for="edit-aporte-monto">Monto</label>' +
+      '<input type="number" id="edit-aporte-monto" step="0.01" min="0" value="' + mov.monto + '">' +
+      '<label for="edit-aporte-fecha">Fecha</label>' +
+      '<input type="date" id="edit-aporte-fecha" value="' + mov.fecha + '">' +
+      '<label for="edit-aporte-nota">Nota</label>' +
+      '<input type="text" id="edit-aporte-nota" value="' + (mov.nota ? mov.nota.replace(/"/g, '&quot;') : '') + '">' +
+      '<button type="button" id="btn-guardar-edit-aporte" style="width:100%;margin-top:16px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer;font-weight:600">Guardar</button>' +
+      '<div id="msg-edit-aporte" style="margin-top:8px;font-size:13px"></div>';
+
+    document.getElementById('btn-guardar-edit-aporte').addEventListener('click', function() {
+      const msg = document.getElementById('msg-edit-aporte');
+      const monto = parseFloat(document.getElementById('edit-aporte-monto').value) || 0;
+      if (!monto) { msg.textContent = 'Ingresá un monto válido.'; msg.className = 'err'; return; }
+      const fields = {
+        monto: monto,
+        fecha: document.getElementById('edit-aporte-fecha').value,
+        nota: document.getElementById('edit-aporte-nota').value
+      };
+      sbUpdate('movimientos', 'mov_id=eq.' + encodeURIComponent(mov.mov_id), fields).then(function(data) {
+        if (data.ok) { window.location.reload(); }
+        else { msg.textContent = 'Error al guardar.'; msg.className = 'err'; }
+      }).catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
+    });
   }
 
   function mostrarFormActor(actor, categoria) {
