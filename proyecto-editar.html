@@ -516,7 +516,7 @@
       const histCont = document.getElementById('hist-financiamiento');
       const mov = data.movimientos || [];
       movimientosActual = mov;
-      renderHistFinanciamiento(mov);
+      renderHistFinanciamiento(mov, p.estado);
 
       const financiado = mov.reduce(function(a, m) {
         return a + (m.tipo_movimiento === 'aporte_proyecto' ? (parseFloat(m.monto) || 0) : -(parseFloat(m.monto) || 0));
@@ -560,7 +560,17 @@
   // --- Modal de gastos con drill-down: rubro > sub-rubro > proveedor > detalle ---
   const ETIQUETAS_FIN = { propio: 'Capital propio', inversor: 'Inversores', prestamo: 'Préstamos' };
 
-  function renderHistFinanciamiento(mov) {
+  let proyectoVendidoActual = false;
+
+  function celdaMontoFin(neto) {
+    if (proyectoVendidoActual && neto <= 0.5) {
+      return '<span style="color:var(--success)">Beneficio retirado: ' + fmt(-neto) + '</span>';
+    }
+    return '<span>' + fmt(neto) + '</span>';
+  }
+
+  function renderHistFinanciamiento(mov, estado) {
+    proyectoVendidoActual = estado === 'vendido';
     const histCont = document.getElementById('hist-financiamiento');
     if (!mov.length) {
       histCont.innerHTML = '<p class="sub" style="margin:0">Sin movimientos cargados todavía.</p>';
@@ -574,7 +584,7 @@
     });
     const categorias = Object.keys(totalPorCategoria);
     histCont.innerHTML = categorias.map(function(cat) {
-      return '<div class="hist-row cat-fin" data-cat="' + cat + '" style="cursor:pointer"><span>' + (ETIQUETAS_FIN[cat] || cat) + '</span><span>' + fmt(totalPorCategoria[cat]) + '</span></div>';
+      return '<div class="hist-row cat-fin" data-cat="' + cat + '" style="cursor:pointer"><span>' + (ETIQUETAS_FIN[cat] || cat) + '</span>' + celdaMontoFin(totalPorCategoria[cat]) + '</div>';
     }).join('');
     histCont.querySelectorAll('.cat-fin').forEach(function(el) {
       el.addEventListener('click', function() { mostrarDrillCategoriaFin(el.dataset.cat); });
@@ -590,7 +600,7 @@
     });
     const actores = Object.keys(netoPorActor);
     const filas = actores.map(function(actor) {
-      return '<div class="hist-row drill-actor-fin" data-actor="' + actor.replace(/"/g, '&quot;') + '" style="cursor:pointer"><span>' + actor + '</span><span>' + fmt(netoPorActor[actor]) + '</span></div>';
+      return '<div class="hist-row drill-actor-fin" data-actor="' + actor.replace(/"/g, '&quot;') + '" style="cursor:pointer"><span>' + actor + '</span>' + celdaMontoFin(netoPorActor[actor]) + '</div>';
     }).join('');
     abrirModalGastos(ETIQUETAS_FIN[cat] || cat, filas, false, null);
     document.querySelectorAll('.drill-actor-fin').forEach(function(el) {
