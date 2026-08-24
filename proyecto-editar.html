@@ -1088,6 +1088,7 @@
   let formModoActual = 'aporte_proyecto';
 
   function abrirFormFinanciamiento(modo, titulo) {
+    document.getElementById('f-financiamiento').reset();
     formModoActual = modo;
     document.getElementById('tipo_movimiento_nuevo').value = modo;
     document.getElementById('titulo-form-financiamiento').textContent = titulo;
