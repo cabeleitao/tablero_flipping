@@ -44,7 +44,12 @@
   <label for="proveedor_gc">Proveedor / GC</label>
   <input type="text" id="proveedor_gc">
 
-  <label for="comprobante_nota">Comprobante o nota</label>
+  <label for="comprobante_nota" style="display:flex;align-items:center;justify-content:space-between">
+    <span>Comprobante o nota</span>
+    <button type="button" id="btn-adjuntar" style="background:none;border:none;cursor:pointer;font-size:20px;padding:0 4px" title="Adjuntar foto">📎</button>
+  </label>
+  <input type="file" id="input-archivo" accept="image/*,.pdf" style="display:none">
+  <div id="adjunto-preview" style="display:none;margin-bottom:10px;font-size:13px"></div>
   <textarea id="comprobante_nota"></textarea>
 
   <button type="submit" id="btn">Guardar gasto</button>
@@ -66,6 +71,50 @@
     }, extra || {});
   }
   function orNull(v) { return (v === '' || v === undefined) ? null : v; }
+
+  const STORAGE_URL = 'https://gdmgwbutazkrmzecncar.supabase.co/storage/v1';
+  let comprobanteUrl = '';
+
+  document.getElementById('btn-adjuntar').addEventListener('click', function() {
+    document.getElementById('input-archivo').click();
+  });
+
+  document.getElementById('input-archivo').addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+    const preview = document.getElementById('adjunto-preview');
+    preview.style.display = 'block';
+    preview.textContent = 'Subiendo ' + file.name + '…';
+    document.getElementById('btn-adjuntar').disabled = true;
+
+    const nombreArchivo = Date.now() + '-' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    fetch(STORAGE_URL + '/object/comprobantes/' + nombreArchivo, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': file.type || 'application/octet-stream'
+      },
+      body: file
+    }).then(function(r) {
+      document.getElementById('btn-adjuntar').disabled = false;
+      if (!r.ok) {
+        preview.textContent = 'Error al subir el archivo.';
+        return;
+      }
+      comprobanteUrl = STORAGE_URL + '/object/public/comprobantes/' + nombreArchivo;
+      preview.innerHTML = '✅ Adjuntado: ' + file.name + ' <a href="#" id="btn-quitar-adjunto" style="color:var(--danger);margin-left:8px">quitar</a>';
+      document.getElementById('btn-quitar-adjunto').addEventListener('click', function(e) {
+        e.preventDefault();
+        comprobanteUrl = '';
+        preview.style.display = 'none';
+        document.getElementById('input-archivo').value = '';
+      });
+    }).catch(function() {
+      document.getElementById('btn-adjuntar').disabled = false;
+      preview.textContent = 'No se pudo conectar para subir el archivo.';
+    });
+  });
 
   const idPreseleccionado = new URLSearchParams(window.location.search).get('id');
 
@@ -100,6 +149,11 @@
     msg.textContent = '';
     msg.className = '';
 
+    const notaTexto = document.getElementById('comprobante_nota').value;
+    const notaFinal = comprobanteUrl
+      ? (notaTexto ? notaTexto + ' — Comprobante: ' + comprobanteUrl : 'Comprobante: ' + comprobanteUrl)
+      : notaTexto;
+
     const fields = {
       gasto_id: 'g-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       id_proyecto: document.getElementById('proyecto').value,
@@ -108,7 +162,7 @@
       sub_rubro: orNull(document.getElementById('sub_rubro').value),
       monto: document.getElementById('monto').value,
       proveedor_gc: orNull(document.getElementById('proveedor_gc').value),
-      comprobante_nota: orNull(document.getElementById('comprobante_nota').value)
+      comprobante_nota: orNull(notaFinal)
     };
 
     fetch(SUPABASE_URL + '/ejecucion', {
