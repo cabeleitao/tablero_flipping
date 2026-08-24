@@ -159,8 +159,10 @@
       <div id="fecha-monto-propio">
         <label for="monto_propio_total">Monto total</label>
         <input type="number" id="monto_propio_total" step="0.01" min="0">
-        <label for="fecha_desembolso_propio">Fecha</label>
-        <input type="date" id="fecha_desembolso_propio">
+        <div id="wrap-fecha-propio">
+          <label for="fecha_desembolso_propio">Fecha</label>
+          <input type="date" id="fecha_desembolso_propio">
+        </div>
         <label style="margin-top:22px">Reparto entre socios</label>
         <div id="socios-lista"></div>
         <button type="button" class="add-socio" id="btn-add-socio">+ Agregar socio</button>
@@ -178,8 +180,10 @@
         <input type="number" id="monto_fin" step="0.01" min="0">
         <label for="tasa_anual">Tasa anual (%)</label>
         <input type="number" id="tasa_anual" step="0.01" min="0">
-        <label for="fecha_desembolso">Fecha</label>
-        <input type="date" id="fecha_desembolso">
+        <div id="wrap-fecha-terceros">
+          <label for="fecha_desembolso">Fecha</label>
+          <input type="date" id="fecha_desembolso">
+        </div>
         <label for="penalidad_prepago">Penalidad por cancelación anticipada</label>
         <input type="text" id="penalidad_prepago" placeholder="ej: 1 año, 2% del saldo">
         <label for="retorno_pactado">Retorno pactado (solo inversores)</label>
@@ -356,32 +360,41 @@
     }).catch(function() { msg.textContent = 'No se pudo conectar.'; msg.className = 'err'; });
   });
 
+  function sbResult(r) {
+    if (r.ok) return { ok: true };
+    return r.text().then(function(txt) {
+      let error = 'Error ' + r.status;
+      try { const body = JSON.parse(txt); error = body.message || body.hint || error; } catch (e) {}
+      return { ok: false, error: error };
+    }).catch(function() { return { ok: false, error: 'Error ' + r.status }; });
+  }
+
   function postFila(payload) {
     const tabla = payload.sheet ? payload.sheet.toLowerCase() : null;
 
     if (payload.modo === 'eliminar_proyecto') {
       return fetch(SUPABASE_URL + '/proyectos?id_proyecto=eq.' + encodeURIComponent(payload.id_proyecto), {
         method: 'DELETE', headers: sbHeaders({ Prefer: 'return=minimal' })
-      }).then(function(r) { return { ok: r.ok }; });
+      }).then(sbResult);
     }
 
     if (payload.modo === 'eliminar_actor') {
       return fetch(SUPABASE_URL + '/movimientos?actor=eq.' + encodeURIComponent(payload.actor), {
         method: 'DELETE', headers: sbHeaders({ Prefer: 'return=minimal' })
-      }).then(function(r) { return { ok: r.ok }; });
+      }).then(sbResult);
     }
 
     if (payload.modo === 'eliminar_fila') {
       return fetch(SUPABASE_URL + '/' + tabla + '?' + payload.campo + '=eq.' + encodeURIComponent(payload.valor), {
         method: 'DELETE', headers: sbHeaders({ Prefer: 'return=minimal' })
-      }).then(function(r) { return { ok: r.ok }; });
+      }).then(sbResult);
     }
 
     if (payload.modo === 'actualizar_por_campo') {
       return fetch(SUPABASE_URL + '/' + tabla + '?' + payload.campo + '=eq.' + encodeURIComponent(payload.valor), {
         method: 'PATCH', headers: sbHeaders({ Prefer: 'return=minimal' }),
         body: JSON.stringify(sanitizeFields(payload.fields))
-      }).then(function(r) { return { ok: r.ok }; });
+      }).then(sbResult);
     }
 
     if (payload.modo === 'actualizar') {
@@ -392,7 +405,7 @@
         method: 'POST',
         headers: sbHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
         body: JSON.stringify(fields)
-      }).then(function(r) { return { ok: r.ok }; });
+      }).then(sbResult);
     }
 
     if (payload.modo === 'actualizar_presupuesto') {
@@ -414,7 +427,7 @@
     return fetch(SUPABASE_URL + '/' + tabla, {
       method: 'POST', headers: sbHeaders({ Prefer: 'return=minimal' }),
       body: JSON.stringify(body)
-    }).then(function(r) { return { ok: r.ok }; });
+    }).then(sbResult);
   }
 
   function cargarDetalle() {
@@ -1060,8 +1073,11 @@
   function actualizarCamposFinanciamiento() {
     const tipo = document.getElementById('tipo_fuente').value;
     const mostrarSplit = tipo === 'propio';
+    const esRefinanciar = formModoActual === 'devolucion_proyecto';
     document.getElementById('fecha-monto-propio').style.display = mostrarSplit ? 'block' : 'none';
     document.getElementById('campos-terceros').style.display = mostrarSplit ? 'none' : 'block';
+    document.getElementById('wrap-fecha-propio').style.display = esRefinanciar ? 'none' : 'block';
+    document.getElementById('wrap-fecha-terceros').style.display = esRefinanciar ? 'none' : 'block';
     if (!mostrarSplit) actualizarSelectorActor();
   }
 
@@ -1150,7 +1166,7 @@
       }
       const total = socios.reduce(function(a, s) { return a + (parseFloat(s.pct) || 0); }, 0);
       if (Math.abs(total - 100) > 0.5) return { error: 'El reparto entre socios tiene que sumar 100%.' };
-      const fecha = document.getElementById('fecha_desembolso_propio').value;
+      const fecha = formModoActual === 'devolucion_proyecto' ? document.getElementById('refi-fecha').value : document.getElementById('fecha_desembolso_propio').value;
 
       const insuficientes = socios.filter(function(s) {
         const asignado = montoTotal * (parseFloat(s.pct) || 0) / 100;
@@ -1177,7 +1193,7 @@
 
     const seleccion = document.getElementById('actor_existente').value;
     const monto = parseFloat(document.getElementById('monto_fin').value) || 0;
-    const fecha = document.getElementById('fecha_desembolso').value;
+    const fecha = formModoActual === 'devolucion_proyecto' ? document.getElementById('refi-fecha').value : document.getElementById('fecha_desembolso').value;
     if (!seleccion && monto <= 0) {
       if (opcional) return { envios: [], montoTotal: 0 };
       return { error: 'Completá el actor y el monto.' };
