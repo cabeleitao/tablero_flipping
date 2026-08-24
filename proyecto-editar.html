@@ -628,7 +628,8 @@
         const match = g.comprobante_nota.match(/(https?:\/\/\S+)/);
         if (match) {
           const textoPrevio = g.comprobante_nota.slice(0, match.index).replace(/:\s*$/, '').trim();
-          nota = ' · ' + (textoPrevio ? textoPrevio + ' ' : '') + '<a href="' + match[1] + '" target="_blank" rel="noopener" style="color:var(--accent)">📎 Ver comprobante</a>';
+          const esGenerico = !textoPrevio || textoPrevio.toLowerCase() === 'comprobante';
+          nota = ' · ' + (esGenerico ? '' : textoPrevio + ' ') + '<a href="' + match[1] + '" target="_blank" rel="noopener" style="color:var(--accent)">📎 Ver comprobante</a>';
         } else {
           nota = ' · ' + g.comprobante_nota;
         }
@@ -684,8 +685,19 @@
       '<input type="text" id="ed-gasto-prov" value="' + (g.proveedor_gc || '').replace(/"/g, '&quot;') + '">' +
       '<label for="ed-gasto-nota">Comprobante o nota</label>' +
       '<input type="text" id="ed-gasto-nota" value="' + (g.comprobante_nota || '').replace(/"/g, '&quot;') + '">' +
+      (/https?:\/\//.test(g.comprobante_nota || '') ? '<p class="sub" style="margin:6px 0 0"><a href="#" id="btn-quitar-adjunto-edicion" style="color:var(--danger)">Quitar el adjunto de este gasto</a></p>' : '') +
       '<button type="button" id="btn-guardar-gasto" style="width:100%;margin-top:16px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:14px;cursor:pointer;font-weight:600">Guardar cambios</button>' +
       '<div id="msg-editar-gasto" style="margin-top:8px;font-size:13px"></div>';
+
+    const btnQuitarAdjunto = document.getElementById('btn-quitar-adjunto-edicion');
+    if (btnQuitarAdjunto) {
+      btnQuitarAdjunto.addEventListener('click', function(e) {
+        e.preventDefault();
+        const notaSinLink = (document.getElementById('ed-gasto-nota').value || '').replace(/https?:\/\/\S+/, '').replace(/\s*(comprobante:?\s*)?$/i, '').trim();
+        document.getElementById('ed-gasto-nota').value = notaSinLink;
+        this.parentElement.style.display = 'none';
+      });
+    }
 
     document.getElementById('btn-guardar-gasto').addEventListener('click', function() {
       const msg = document.getElementById('msg-editar-gasto');
