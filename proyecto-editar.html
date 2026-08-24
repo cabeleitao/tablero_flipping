@@ -630,7 +630,7 @@
         if (match) {
           const textoPrevio = g.comprobante_nota.slice(0, match.index).replace(/:\s*$/, '').trim();
           const esGenerico = !textoPrevio || textoPrevio.toLowerCase() === 'comprobante';
-          nota = ' · ' + (esGenerico ? '' : textoPrevio + ' ') + '<a href="' + match[1] + '" target="_blank" rel="noopener" style="color:var(--accent)">📎 Ver comprobante</a>';
+          nota = ' · ' + (esGenerico ? '' : textoPrevio + ' ') + '<a href="' + match[1] + '" target="_blank" rel="noopener" style="color:var(--accent);font-size:16px;text-decoration:none" title="Ver comprobante">📎</a>';
         } else {
           nota = ' · ' + g.comprobante_nota;
         }
